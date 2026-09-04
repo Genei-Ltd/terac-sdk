@@ -64,6 +64,12 @@ without a replacement:
 - `timeoutMs` covering the response body, not only the response headers.
 - Distinct error classes, with an HTTP error constructed only when a
   non-success response exists.
+- The API key validated in the constructor, so a value that cannot be a header
+  never reaches `Headers.set` and never lands on an error's `cause`.
+- Response header VALUES on an allow-list, not a block-list.
 - Webhook verification: constant-time compare, strict base64, duplicate headers
-  rejected, and a timestamp tolerance window.
+  rejected, a timestamp tolerance window that fails closed, the signed
+  `event_id` preferred over the unsigned header, and an HMAC over the exact
+  bytes supplied.
+- A caller's abort reason preserved by identity, including falsy values.
 - `pnpm run generate` never touching the network.

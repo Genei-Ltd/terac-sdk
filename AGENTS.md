@@ -37,8 +37,11 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
   atomically replaces `schemas/openapi.json`.
 - `pnpm run generate` — regenerates `src/generated/**` from the **committed**
   schema, then formats it. Offline and reproducible.
-- `pnpm run generate:check` — regenerates into a scratch directory and fails if
-  the committed output differs.
+- `pnpm run generate:check` — regenerates and fails if the committed output
+  differs. The generator writes into `src/generated` (the output path is in
+  `openapi-ts.config.ts`), so the script copies the committed tree aside first
+  and an EXIT trap restores it however the run ends. A failure never leaves a
+  half-regenerated worktree.
 - `pnpm run tc` — type-check without emitting.
 - `pnpm run lint` — ESLint across the repository.
 - `pnpm run test` — Vitest.
@@ -65,8 +68,10 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
 ## After regenerating the client
 
 - **Update the `TeracSdk` facade**
-  - Every generated operation must be wrapped. `tests/operations.test.ts`
-    asserts the count, so a new endpoint fails the suite until it is added.
+  - Every generated operation must be wrapped. `tests/operations.test.ts` holds
+    an explicit generated-operation-to-route table and compares it to the
+    facade table by NAME, so a new endpoint fails the suite until it is listed
+    and wrapped. Do not replace that with a count.
   - Add the new method to the right module (`projects`, `filters`,
     `opportunities`, `submissions`, `quotes`, `feasibility`, `organizations`,
     `webhooks`), with an optional trailing `options?: TeracRequestOptions`
@@ -76,9 +81,14 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
   - Add a row to the table in `tests/operations.test.ts` with the method, path,
     query and body.
   - Copy the endpoint docstring from `src/generated/sdk.gen.ts` into the facade
-    JSDoc.
+    JSDoc — the summary AND the description, verbatim, before any note of your
+    own. The generated descriptions carry things the signature cannot say, such
+    as how an opportunity is priced or that an applicant is invisible to the
+    submissions listing. `tests/docs.test.ts` compares the two with whitespace
+    normalised, so a summary that drops the description fails.
   - Mark anything absent from `https://terac.com/docs/developers/reference` as
-    **undocumented** in JSDoc and in the README.
+    **undocumented** in JSDoc and in the README table of undocumented
+    endpoints. Both lists must name the same operations.
 
 - **Update the domain aliases**
   - `src/domain.ts` aliases generated types, never redeclares them. If a new
@@ -90,12 +100,16 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
     provider ever documents them in the spec, replace the hand-written code
     with generated types rather than keeping both.
   - Never turn `event_type` into a closed union. Terac adds event types without
-    a version bump and tells you to read `GET /hooks/event-types`.
+    a version bump and tells you to read `GET /hooks/event-types`. The
+    provider's document does declare them as enums, and
+    `normalizeOpenWebhookEventTypes` in `scripts/update-schema.ts` strips them
+    during vendoring; `tests/schema.test.ts` fails if one comes back.
 
 - **Refresh documentation**
-  - README code blocks are quoted **verbatim** from `examples/**`, which `tc`
-    compiles against the real types. Edit the example, then re-copy the block.
-    `tests/docs.test.ts` fails if they drift.
+  - EVERY README TypeScript block is quoted **verbatim** from `examples/**`,
+    one-liners included, and `tc` compiles those against the real types. Edit
+    the example, then re-copy the block. `tests/docs.test.ts` fails if they
+    drift, and every example file must appear in the README in full.
   - The Scripts table in the README must match `package.json`; the same test
     checks it.
 

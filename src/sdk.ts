@@ -182,7 +182,11 @@ class ProjectsModule {
     this.#sdk = sdk
   }
 
-  /** Lists the organisation's projects, newest first. */
+  /**
+   * List projects
+   *
+   * Newest first.
+   */
   async list(
     query?: GetProjectsData['query'],
     options?: TeracRequestOptions,
@@ -194,7 +198,9 @@ class ProjectsModule {
     return result.data
   }
 
-  /** Creates a project. */
+  /**
+   * Create a project
+   */
   async create(
     body: PostProjectsData['body'],
     options?: TeracRequestOptions,
@@ -206,7 +212,11 @@ class ProjectsModule {
     return result.data
   }
 
-  /** Retrieves one project, including its opportunity count. */
+  /**
+   * Get project details
+   *
+   * Includes the project's opportunity count.
+   */
   async retrieve(
     projectId: string,
     options?: TeracRequestOptions,
@@ -218,7 +228,11 @@ class ProjectsModule {
     return result.data
   }
 
-  /** Updates a project's name. */
+  /**
+   * Update a project
+   *
+   * The name is the only field that can change.
+   */
   async update(
     projectId: string,
     body: PatchProjectsByProjectIdData['body'],
@@ -246,15 +260,20 @@ class FiltersModule {
     this.#sdk = sdk
   }
 
-  /** Lists every filter slug, with its type, operators and bounds. */
+  /**
+   * List available filters
+   *
+   * Every filter slug, with its type, operators and bounds.
+   */
   async list(options?: TeracRequestOptions): Promise<GetFiltersResponse> {
     const result = await this.#sdk.getFilters<true>({ ...toOptions(options) })
     return result.data
   }
 
   /**
-   * Lists the selectable options for one filter slug. Geography filters narrow
-   * with `country_id` / `state_id`.
+   * List options for a filter
+   *
+   * Geography filters narrow with `country_id` / `state_id`.
    */
   async listOptions(
     filterSlug: string,
@@ -283,7 +302,11 @@ class OpportunitiesModule {
     this.#sdk = sdk
   }
 
-  /** Lists opportunities, optionally filtered by project or status. */
+  /**
+   * List opportunities
+   *
+   * Optionally filtered by project or status.
+   */
   async list(
     query?: GetOpportunitiesData['query'],
     options?: TeracRequestOptions,
@@ -295,7 +318,35 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Creates a draft opportunity. It does not recruit until you launch it. */
+  /**
+   * Create a draft opportunity
+   *
+   * Creates the opportunity as a DRAFT. Nothing is charged and no recruitment starts until you call
+   * `POST /opportunities/{opportunityId}/launch`.
+   *
+   * **The incentive is derived, not sent.** There is no field for participant pay, and the amount is
+   * fixed when the draft is created. Two paths decide which number you get:
+   *
+   * - **Omit `feasibility_request_id`** and the incentive is an automatic estimate made during this
+   * call. It is priced from the whole brief, not just its size: the participant count, the task
+   * duration, the audience your `filters` and `screening_questions` describe, and the recruitment
+   * window from `expected_days_to_complete`. Changing any of those changes the price, so read the
+   * result back from `pricing` on the response; do not quote a price to anyone before you have.
+   * - **Pass a `feasibility_request_id`** and that request's confirmed CPI is honored exactly, with no
+   * re-estimate. Submit the brief to `POST /feasibility/requests` first and poll
+   * `GET /feasibility/requests/{requestId}` until it reads `RESPONDED`, which is when a price exists.
+   * This is the way to control what participants are paid.
+   *
+   * The platform fee follows the same split. Priced by feasibility, the confirmed recruitment fee
+   * becomes this opportunity's fee, as a flat per-participant amount, so the all-in CPI you agreed is
+   * the one you are charged. Priced automatically, it comes from the organization's configuration
+   * instead. Either way it is not a per-opportunity input, and neither is the currency (always USD) or
+   * the pay cadence (always `one_time`). `pricing` on the response carries the all-in cost per
+   * participant and the total, and `funding` says whether the balance covers a launch.
+   *
+   * Editing after this call is draft-only: `PATCH /opportunities/{opportunityId}` returns 409 once the
+   * opportunity is launched, and a new recruitment window moves the deadline without re-pricing.
+   */
   async create(
     body: PostOpportunitiesData['body'],
     options?: TeracRequestOptions,
@@ -307,7 +358,11 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Retrieves one opportunity, with quota and screening progress. */
+  /**
+   * Get opportunity details
+   *
+   * Includes quota and screening progress.
+   */
   async retrieve(
     opportunityId: string,
     options?: TeracRequestOptions,
@@ -319,7 +374,11 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Updates a draft opportunity. */
+  /**
+   * Update opportunity
+   *
+   * Draft only: Terac returns `409` once the opportunity is launched.
+   */
   async update(
     opportunityId: string,
     body: PatchOpportunitiesByOpportunityIdData['body'],
@@ -333,7 +392,9 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Deletes a draft opportunity. */
+  /**
+   * Delete a draft opportunity
+   */
   async delete(
     opportunityId: string,
     options?: TeracRequestOptions,
@@ -345,7 +406,11 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Launches a draft opportunity, which starts recruiting and spends funds. */
+  /**
+   * Launch opportunity
+   *
+   * Starts recruiting, and spends funds.
+   */
   async launch(
     opportunityId: string,
     options?: TeracRequestOptions,
@@ -360,7 +425,11 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Pauses a live opportunity. No new participants enter. */
+  /**
+   * Pause opportunity
+   *
+   * No new participants enter while it is paused.
+   */
   async pause(
     opportunityId: string,
     options?: TeracRequestOptions,
@@ -373,7 +442,9 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Resumes a paused opportunity. */
+  /**
+   * Resume opportunity
+   */
   async resume(
     opportunityId: string,
     options?: TeracRequestOptions,
@@ -388,7 +459,11 @@ class OpportunitiesModule {
     return result.data
   }
 
-  /** Stops an opportunity for good. This cannot be undone. */
+  /**
+   * Stop opportunity
+   *
+   * This cannot be undone.
+   */
   async stop(
     opportunityId: string,
     body: PostOpportunitiesByOpportunityIdStopData['body'] = EMPTY_BODY,
@@ -407,6 +482,13 @@ class OpportunitiesModule {
  * Submissions are one participant's run through one opportunity: screening,
  * the work, and the review that pays them.
  *
+ * Three of these are **undocumented**: {@link SubmissionsModule.listApplicants},
+ * {@link SubmissionsModule.invite} and {@link SubmissionsModule.decline} are in
+ * Terac's OpenAPI document but have no page under
+ * `https://terac.com/docs/developers/reference`, so they may change without
+ * notice. They are the only way to work an applicant-review queue, so they are
+ * wrapped rather than withheld.
+ *
  * @see https://terac.com/docs/developers/reference/getSubmission
  */
 class SubmissionsModule {
@@ -416,7 +498,9 @@ class SubmissionsModule {
     this.#sdk = sdk
   }
 
-  /** Lists submissions for an opportunity. */
+  /**
+   * List submissions for an opportunity
+   */
   async list(
     opportunityId: string,
     query?: GetOpportunitiesByOpportunityIdSubmissionsData['query'],
@@ -432,8 +516,26 @@ class SubmissionsModule {
   }
 
   /**
-   * Lists applicants awaiting your invite/decline decision. Only populated
-   * when the opportunity uses customer screening review.
+   * List applicants awaiting your invite decision
+   *
+   * Applicants who passed screening and are waiting on your decision to invite them.
+   *
+   * They are deliberately absent from `GET /opportunities/{opportunityId}/submissions`: an applicant
+   * here has not been invited yet, so they hold no submission status, and `GET /submissions/{id}`
+   * returns 404 for them. This collection is where they exist until you decide.
+   *
+   * Act on one with `POST /submissions/{submissionId}/invite` or `/decline`. Inviting makes them
+   * `screen_passed` and starts their tasks; declining makes them `screened_out`. Either way they
+   * leave this collection and appear in the submissions listing from then on.
+   *
+   * An opportunity on `manual_review` routes every qualified applicant here. One on `auto_invite`
+   * still routes an individual applicant here when a screening answer you marked `review` flags
+   * them, so poll this even when you did not opt into reviewing everyone.
+   *
+   * **Undocumented endpoint** (`GET /opportunities/{opportunityId}/applicants`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
    */
   async listApplicants(
     opportunityId: string,
@@ -449,7 +551,16 @@ class SubmissionsModule {
     return result.data
   }
 
-  /** Invites an applicant, moving them to `screen_passed` so they can start. */
+  /**
+   * Invite an applicant awaiting your decision
+   *
+   * Invites an applicant sitting in your applicant-review queue, which materializes their tasks and notifies them. The submission becomes `screen_passed`. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
+   *
+   * **Undocumented endpoint** (`POST /submissions/{submissionId}/invite`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
+   */
   async invite(
     submissionId: string,
     body: PostSubmissionsBySubmissionIdInviteData['body'] = EMPTY_BODY,
@@ -463,7 +574,16 @@ class SubmissionsModule {
     return result.data
   }
 
-  /** Declines an applicant, marking them `screened_out`. */
+  /**
+   * Decline an applicant awaiting your decision
+   *
+   * Declines an applicant sitting in your applicant-review queue. The submission becomes `screened_out` and they are not invited. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
+   *
+   * **Undocumented endpoint** (`POST /submissions/{submissionId}/decline`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
+   */
   async decline(
     submissionId: string,
     body: PostSubmissionsBySubmissionIdDeclineData['body'] = EMPTY_BODY,
@@ -477,7 +597,11 @@ class SubmissionsModule {
     return result.data
   }
 
-  /** Retrieves one submission, with its screening answers and task output. */
+  /**
+   * Get submission details
+   *
+   * Includes the screening answers and the task output.
+   */
   async retrieve(
     submissionId: string,
     options?: TeracRequestOptions,
@@ -489,7 +613,11 @@ class SubmissionsModule {
     return result.data
   }
 
-  /** Approves a submission awaiting review, which pays the participant. */
+  /**
+   * Approve a submission
+   *
+   * Approving is what pays the participant.
+   */
   async approve(
     submissionId: string,
     options?: TeracRequestOptions,
@@ -502,7 +630,11 @@ class SubmissionsModule {
     return result.data
   }
 
-  /** Rejects a submission awaiting review, which withholds payment. */
+  /**
+   * Reject a submission
+   *
+   * Rejecting withholds payment.
+   */
   async reject(
     submissionId: string,
     body: PostSubmissionsBySubmissionIdRejectData['body'] = EMPTY_BODY,
@@ -534,9 +666,22 @@ class QuotesModule {
   }
 
   /**
-   * Prices a task and panel synchronously.
+   * Get a price estimate for a research task
+   *
+   * Returns a price estimate for recruiting participants for a research task.
+   * Provide the task description, target panel, timeline in hours, and number of participants needed.
+   *
+   * **Self-serve limits** (industry standard for panel/research platforms):
+   * - `timelineHours`: 72–720 (min 3 days, max 1 month).
+   * - `submissionCount`: 1–999 participants.
+   * Requests outside these ranges return a validation error.
+   *
+   * **Larger studies:** For more than 999 participants or timelines beyond 1 month, contact sales or use enterprise options.
    *
    * **Undocumented endpoint** (`POST /quotes`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
    */
   async create(
     body: PostQuotesData['body'],
@@ -550,9 +695,14 @@ class QuotesModule {
   }
 
   /**
-   * Retrieves a quote, with its reasoning and expiry.
+   * Get quote details
+   *
+   * Returns the details of a specific feasibility quote, including pricing, timeline, and analysis.
    *
    * **Undocumented endpoint** (`GET /quotes/{quoteId}`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
    */
   async retrieve(
     quoteId: string,
@@ -566,11 +716,17 @@ class QuotesModule {
   }
 
   /**
-   * Creates and launches an opportunity from an accepted quote.
+   * Launch an opportunity from a quote
    *
-   * **Undocumented endpoint** (`POST /quotes/{quoteId}/launch`). The spec tags
-   * it `Opportunities`; it lives here because its path and its input are the
-   * quote.
+   * Creates and launches a research opportunity from a previously created quote. AI generation, billing, and activation happen asynchronously after this returns. Optionally provide projectId to place the opportunity in a specific project.
+   *
+   * **Undocumented endpoint** (`POST /quotes/{quoteId}/launch`).
+   * It is in Terac's OpenAPI document but has no page under
+   * `https://terac.com/docs/developers/reference`, so it may change without
+   * notice.
+   *
+   * The spec tags it `Opportunities`; it lives on `quotes` here because its
+   * path and its input are the quote.
    */
   async launch(
     quoteId: string,
@@ -599,7 +755,23 @@ class FeasibilityModule {
     this.#sdk = sdk
   }
 
-  /** Submits a feasibility request. */
+  /**
+   * Submit a feasibility request
+   *
+   * Submit a feasibility request: can Terac source a panel for this task, and at what CPI (cost per participant).
+   *
+   * This is an async request-reply. The response comes back immediately with status RECEIVED and no CPI
+   * (costPerParticipant is null). Terac prices it out of band, either automatically within seconds or by
+   * routing it to a person, so poll GET /feasibility/requests/{requestId} rather than assuming a turnaround.
+   *
+   * Only what you send here is priced: taskDescription, panelDescription, and the count and timeline. The
+   * filters, screening questions and tasks on the opportunity you build later are not part of the brief that
+   * was priced, so a confirmed CPI applies to the scope described here and not to a materially different one.
+   *
+   * Once RESPONDED, create the opportunity with POST /opportunities and pass feasibility_request_id to price
+   * it from that confirmed CPI (Terac skips the autonomous estimate), then launch it. The request stays
+   * RESPONDED until that study launches, and is closed as won at launch rather than at create.
+   */
   async create(
     body: PostFeasibilityRequestsData['body'],
     options?: TeracRequestOptions,
@@ -611,7 +783,14 @@ class FeasibilityModule {
     return result.data
   }
 
-  /** Lists feasibility requests. */
+  /**
+   * List feasibility requests
+   *
+   * List your organization's feasibility requests, newest first. Optionally filter by status
+   * (RECEIVED / RESPONDED / WON / LOST / NOT_PURSUED) and page through results with limit and offset. Each
+   * request includes its costPerParticipant (the CPI), which is null until the request has been priced
+   * (status RESPONDED).
+   */
   async list(
     query?: GetFeasibilityRequestsData['query'],
     options?: TeracRequestOptions,
@@ -623,7 +802,21 @@ class FeasibilityModule {
     return result.data
   }
 
-  /** Retrieves one feasibility request and its response, once answered. */
+  /**
+   * Get a feasibility request
+   *
+   * Retrieve one of your feasibility requests by id. Use this to poll for the CPI after submitting.
+   *
+   * Status decides whether there is a price to read:
+   * - RECEIVED: not priced yet, costPerParticipant is null.
+   * - RESPONDED: priced. costPerParticipant is the confirmed all-in CPI per participant.
+   * - WON: already used by a study that launched.
+   * - LOST or NOT_PURSUED: closed without a usable price. Both are terminal, so stop polling. No reason is
+   * returned on this endpoint.
+   *
+   * Once RESPONDED, create the opportunity with POST /opportunities passing feasibility_request_id to price
+   * it from that confirmed CPI, then launch it.
+   */
   async retrieve(
     requestId: string,
     options?: TeracRequestOptions,
@@ -648,7 +841,13 @@ class OrganizationsModule {
     this.#sdk = sdk
   }
 
-  /** Retrieves the current organisation's name, balance and dashboard links. */
+  /**
+   * Get organization context
+   *
+   * Returns a markdown summary of the authenticated organization including identity, balance, projects, opportunity counts, and any organization-specific MCP instructions.
+   *
+   * The organisation's name, balance and dashboard links.
+   */
   async retrieveContext(
     options?: TeracRequestOptions,
   ): Promise<GetOrganizationsCurrentContextResponse> {
@@ -673,8 +872,9 @@ class WebhooksModule {
   }
 
   /**
-   * Lists the event types a subscription can take. Read this instead of
-   * hardcoding a list: Terac adds event types without a version bump.
+   * List subscribable webhook event types
+   *
+   * Read this rather than hardcoding a list: new event types are added without a breaking change, and appear here first.
    */
   async listEventTypes(
     options?: TeracRequestOptions,
@@ -685,7 +885,9 @@ class WebhooksModule {
     return result.data
   }
 
-  /** Lists the organisation's webhook subscriptions. */
+  /**
+   * List webhook subscriptions
+   */
   async list(
     options?: TeracRequestOptions,
   ): Promise<GetHooksSubscriptionsResponse> {
@@ -696,9 +898,11 @@ class WebhooksModule {
   }
 
   /**
-   * Creates a subscription. It is unconfirmed and receives nothing until
-   * {@link confirm} succeeds. The response is the only place a `create`
-   * returns the signing secret, but {@link retrieveSecret} reads it back.
+   * Create a webhook subscription
+   *
+   * Returns the signing secret alongside the subscription. Created unconfirmed, so it receives nothing until you call the confirm endpoint and Terac's ping to target_url returns 2xx.
+   *
+   * {@link WebhooksModule.retrieveSecret} reads the secret back later.
    */
   async create(
     body: PostHooksSubscriptionsData['body'],
@@ -711,7 +915,9 @@ class WebhooksModule {
     return result.data
   }
 
-  /** Retrieves one subscription. */
+  /**
+   * Get a webhook subscription
+   */
   async retrieve(
     subscriptionId: string,
     options?: TeracRequestOptions,
@@ -724,8 +930,9 @@ class WebhooksModule {
   }
 
   /**
-   * Updates a subscription. `event_types` replaces the list rather than adding
-   * to it. Changing `target_url` clears the confirmation, so confirm again.
+   * Update a webhook subscription
+   *
+   * event_types replaces the current list rather than adding to it. Changing target_url clears the confirmation, since the new host has not accepted a ping yet. Set is_enabled true to recover a subscription Terac disabled after sustained failure.
    */
   async update(
     subscriptionId: string,
@@ -742,9 +949,12 @@ class WebhooksModule {
   }
 
   /**
-   * Confirms a subscription. Terac POSTs one signed `webhook.ping` to the
-   * target URL; a `2xx` activates it, anything else returns `412`. Safe to
-   * repeat, and the cheapest end-to-end test of a receiver.
+   * Confirm a webhook subscription
+   *
+   * Terac POSTs one signed webhook.ping to target_url. Answer 2xx and the subscription starts receiving events. This is also the way to test a receiver end to end, since it exercises the real signature headers.
+   *
+   * Anything but a `2xx` from your receiver returns `412`, and nothing is
+   * confirmed. Safe to repeat.
    */
   async confirm(
     subscriptionId: string,
@@ -760,7 +970,9 @@ class WebhooksModule {
     return result.data
   }
 
-  /** Deletes a subscription. */
+  /**
+   * Delete a webhook subscription
+   */
   async delete(
     subscriptionId: string,
     options?: TeracRequestOptions,
@@ -773,7 +985,11 @@ class WebhooksModule {
     return result.data
   }
 
-  /** Reads a subscription's signing secret back in full. */
+  /**
+   * Read a subscription's signing secret
+   *
+   * For recovering a secret you no longer have. Rotate instead if you believe it leaked, since reading it does not invalidate anything.
+   */
   async retrieveSecret(
     subscriptionId: string,
     options?: TeracRequestOptions,
@@ -787,9 +1003,11 @@ class WebhooksModule {
   }
 
   /**
-   * Rotates the signing secret. There is **no overlap window**: the next
-   * attempt of every delivery, including one already queued, is signed with
-   * the new secret. Deploy it to the receiver first.
+   * Rotate a subscription's signing secret
+   *
+   * Takes effect immediately and with no overlap window: the next attempt of every delivery, including one already queued, is signed with the new secret. Deploy it to your receiver first.
+   *
+   * Deploy the new secret to your receiver first.
    */
   async rotateSecret(
     subscriptionId: string,
@@ -805,9 +1023,11 @@ class WebhooksModule {
   }
 
   /**
-   * Lists deliveries, newest first. One row per delivery, updated in place
-   * across retries, so `id` is the `X-Event-ID` the receiver saw. Confirmation
-   * pings are not logged.
+   * List webhook deliveries
+   *
+   * One row per delivery, updated in place across retries, so id is the X-Event-ID your endpoint saw and attempt_count is how many tries it took. Confirmation pings are not logged here.
+   *
+   * Newest first.
    */
   async listDeliveries(
     query?: GetHooksEventsData['query'],

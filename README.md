@@ -102,6 +102,11 @@ is the only server the document declares and the only one the docs name.
   through a closure when a request is signed. No module holds a copy, and no
   enumerable property anywhere under the SDK contains it — `JSON.stringify(sdk)`
   and `util.inspect(sdk)` are both safe to log.
+- **A malformed key is rejected in the constructor.** A key with surrounding
+  whitespace or any control character throws, with an error that names the
+  fault and never quotes the value. This is not tidiness: `Headers.set` refuses
+  a value containing a newline and puts the whole `Bearer <key>` string in the
+  message, and that error would be kept as `TeracTransportError.cause`.
 - **Redirects are refused.** Node forwards an `Authorization` header across a
   redirect, so following one would hand the key to whatever host the response
   named. Every request is issued with `redirect: 'error'`, and a redirect
@@ -110,6 +115,11 @@ is the only server the document declares and the only one the docs name.
   names with every value replaced by `[redacted]` unless it is a transport
   header such as `content-type`. They never carry the `Request`, the
   `Response`, or the key.
+- **Response header values are allow-listed too.** `error.responseHeaders`
+  keeps every header name, and keeps the value only for `retry-after`, the
+  rate-limit headers, `content-type` and request-id headers. A proxy that
+  echoes your credential back in a header of its own invention cannot put it in
+  your logs.
 
 ## Error handling
 
@@ -127,6 +137,13 @@ All five extend `TeracError`. An HTTP error is constructed **only** when a
 non-success response exists, so `error.status` is always a status Terac really
 sent — a malformed body on a `200` is a `TeracResponseError`, not an
 "API error with status 200".
+
+Every response this API declares is JSON, so the client is pinned to
+`parseAs: 'json'` rather than choosing a decoder from the `Content-Type`. JSON
+labelled `text/plain`, or sent with no content type at all, is still decoded to
+the declared object type; a body that is genuinely not JSON is a
+`TeracResponseError` rather than a string or a `ReadableStream` handed back
+under a type that promised an object.
 
 ```ts
 import {
@@ -195,8 +212,10 @@ headers. A server that sends headers and then stalls the body still trips the
 deadline; without that, the SDK promise would hang forever.
 
 Every operation takes an optional trailing `{ signal }`, forwarded to the
-request. `signal.reason` is preserved, so `AbortSignal.timeout(n)` surfaces its
-own `TimeoutError` and `controller.abort(myError)` surfaces `myError`.
+request. `signal.reason` is preserved by identity, so `AbortSignal.timeout(n)`
+surfaces its own `TimeoutError`, `controller.abort(myError)` surfaces
+`myError`, and `controller.abort(0)`, `abort('')`, `abort(false)` and
+`abort(null)` each reject with exactly that value rather than a stand-in.
 
 ```ts
 import { TeracSdk } from '@coloop-ai/terac-sdk'
@@ -245,7 +264,7 @@ trailing `{ signal }`.
 | `terac.projects`      | `list`, `create`, `retrieve`, `update`                                                                                            |
 | `terac.filters`       | `list`, `listOptions`                                                                                                             |
 | `terac.opportunities` | `list`, `create`, `retrieve`, `update`, `delete`, `launch`, `pause`, `resume`, `stop`                                             |
-| `terac.submissions`   | `list`, `listApplicants`, `invite`, `decline`, `retrieve`, `approve`, `reject`                                                    |
+| `terac.submissions`   | `list`, `retrieve`, `approve`, `reject`, and `listApplicants`, `invite`, `decline` — **undocumented, see below**                  |
 | `terac.quotes`        | `create`, `retrieve`, `launch` — **undocumented, see below**                                                                      |
 | `terac.feasibility`   | `create`, `list`, `retrieve`                                                                                                      |
 | `terac.organizations` | `retrieveContext`                                                                                                                 |
@@ -300,7 +319,11 @@ pnpm add @coloop-ai/terac-sdk
 ```
 
 ```ts
-import { verifyTeracWebhook } from '@coloop-ai/terac-sdk/webhooks'
+import {
+  isSubmissionStatusChangeEvent,
+  isTeracWebhookVerificationError,
+  verifyTeracWebhook,
+} from '@coloop-ai/terac-sdk/webhooks'
 ```
 
 ### The contract
@@ -322,6 +345,23 @@ touches it.
 tampered signature through), rejects duplicate signature and timestamp headers,
 and rejects a delivery whose signed timestamp is outside a tolerance window —
 300 seconds by default, configurable via `toleranceSeconds`.
+
+Three details that decide whether the verification is worth anything:
+
+- **The tolerance fails closed.** `toleranceSeconds` accepts a non-negative
+  finite number, or exactly `Infinity` to switch the freshness check off on
+  purpose. `NaN`, `-Infinity` and negatives throw. `Number(process.env.X)` on
+  an unset variable is `NaN`, and a lenient reading of that would silently
+  delete replay protection. `now` must be finite for the same reason.
+- **The signed `event_id` wins over `X-Event-ID`.** The HMAC covers the
+  timestamp and the body, never the header. When the body carries an
+  `event_id`, that is the value you get back, and a header that disagrees fails
+  verification — otherwise a captured delivery could be replayed under a fresh
+  header id and walk straight past deduplication. The header is used only when
+  the body omits it.
+- **A `Uint8Array` payload is hashed byte for byte.** The bytes are never
+  decoded before the HMAC, so an invalid UTF-8 sequence is not quietly replaced
+  with U+FFFD. Decoding happens after verification, for the JSON parse.
 
 ### A verification failure is not a replay defence
 
@@ -433,6 +473,13 @@ is therefore a plain `string`, not a closed union — a narrower type would reje
 events Terac considers valid. Use `isSubmissionStatusChangeEvent` to narrow the
 two documented ones.
 
+The same is true of the management endpoints. Terac's document declares the
+event-type fields as enums of the two values that exist today, which would make
+a newly listed type fail to type-check and fail Zod validation — the exact
+thing `listEventTypes()` exists to avoid. Vendoring removes those enums, so
+`event_types` is `string[]` in both the generated types and the generated
+schemas.
+
 Deliveries are retried 12 times over about two and a half days. Redirects are
 never followed, so point `target_url` at the final URL. Deliveries time out
 after 10 seconds: acknowledge first, work afterwards.
@@ -487,33 +534,88 @@ auto-rejected after 6 hours.
 
 ## Undocumented endpoints
 
-`POST /quotes`, `GET /quotes/{quoteId}` and `POST /quotes/{quoteId}/launch`
-exist in Terac's OpenAPI document but have no page under
-`https://terac.com/docs/developers/reference`. They are wrapped as
-`terac.quotes.*` and marked undocumented in JSDoc. They may change without
-notice; prefer `terac.feasibility.*` for the documented path to a price.
+Six operations are in Terac's OpenAPI document but have no page under
+`https://terac.com/docs/developers/reference`. They are wrapped, because they
+are the only way to do the things they do, and each one is marked
+**undocumented** in its JSDoc:
+
+| Operation                                       | Facade method                      |
+| ----------------------------------------------- | ---------------------------------- |
+| `GET /opportunities/{opportunityId}/applicants` | `terac.submissions.listApplicants` |
+| `POST /submissions/{submissionId}/invite`       | `terac.submissions.invite`         |
+| `POST /submissions/{submissionId}/decline`      | `terac.submissions.decline`        |
+| `POST /quotes`                                  | `terac.quotes.create`              |
+| `GET /quotes/{quoteId}`                         | `terac.quotes.retrieve`            |
+| `POST /quotes/{quoteId}/launch`                 | `terac.quotes.launch`              |
+
+They may change without notice. The three applicant operations are the whole
+applicant-review queue, so there is no documented alternative; for pricing,
+prefer `terac.feasibility.*`, which is documented.
 
 ## Generated Zod schemas
 
-```ts
-import { zGetSubmissionsBySubmissionIdResponse } from '@coloop-ai/terac-sdk/zod'
-```
-
 One schema per operation, since Terac names almost no component schemas. Use
-them to validate what you received rather than trust it.
+them to validate what you received rather than trust it — worth doing while the
+API is beta.
+
+```ts
+import { TeracSdk } from '@coloop-ai/terac-sdk'
+import { zGetSubmissionsBySubmissionIdResponse } from '@coloop-ai/terac-sdk/zod'
+
+const apiKey = process.env.TERAC_API_KEY
+if (!apiKey) {
+  throw new Error('Set TERAC_API_KEY to an organisation API key (tk_…)')
+}
+
+const terac = new TeracSdk({ apiKey })
+
+// The types describe what the vendored document declares. The schema checks
+// what actually arrived, which is a different question while the API is beta.
+const submission = await terac.submissions.retrieve('sub_abc123')
+const checked = zGetSubmissionsBySubmissionIdResponse.safeParse(submission)
+
+if (!checked.success) {
+  throw new Error(
+    `Terac sent an unexpected submission: ${checked.error.message}`,
+  )
+}
+
+console.log(`${checked.data.id} is ${checked.data.status}`)
+```
 
 ## Generated client access
 
 The generated client and its types are re-exported from the root entry point
-for the rare case where the facade is in the way:
+for the rare case where the facade is in the way. The facade covers every
+operation, sets `redirect: 'error'`, enforces the body-inclusive timeout, pins
+JSON decoding and classifies errors. The generated client does none of that, so
+prefer `TeracSdk`.
 
 ```ts
-import { generated } from '@coloop-ai/terac-sdk'
-```
+import { GeneratedTeracSdk, generated } from '@coloop-ai/terac-sdk'
 
-The facade covers every operation, sets `redirect: 'error'`, enforces the
-body-inclusive timeout and classifies errors. The generated client does none of
-that, so prefer `TeracSdk`.
+const apiKey = process.env.TERAC_API_KEY
+if (!apiKey) {
+  throw new Error('Set TERAC_API_KEY to an organisation API key (tk_…)')
+}
+
+// `TeracSdk` is the supported surface. It refuses redirects, applies a deadline
+// that covers the response body, pins JSON decoding and classifies errors. The
+// generated client does none of that, so anything you still want you have to
+// configure yourself.
+const client = generated.createClient({
+  baseUrl: 'https://terac.com/api/external/v2',
+  auth: () => `Bearer ${apiKey}`,
+  redirect: 'error',
+  parseAs: 'json',
+  throwOnError: true,
+})
+
+const sdk = new GeneratedTeracSdk({ client })
+const { data } = await sdk.getProjects<true>({ query: { limit: 10 } })
+
+console.log(`${String(data.data.length)} projects`)
+```
 
 ## Spec normalisations
 
@@ -522,14 +624,15 @@ validates the result, and only then replaces `schemas/openapi.json`. Every
 normalisation is logged, so a line disappearing from that output is the signal
 to delete the workaround.
 
-| Normalisation                                                                 | Why                                                                                                                            |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Rewrite the five `error.*` schemas to `{ error: { code, message, details } }` | The document declares a flat `{ message, code, issues }` the API never sends. Verified against a live unauthenticated request. |
-| Add `error.CONFLICT` and `error.RATE_LIMITED`                                 | Documented in the errors guide, absent from the document.                                                                      |
-| Add a `429` response to every operation                                       | The 100 req/min limit is per key, so it applies everywhere.                                                                    |
-| Add a `409` response to every non-`GET` operation                             | Documented for state conflicts, absent from the document.                                                                      |
-| Add an empty JSON request body to six body-less `POST` operations             | Terac returns `415` for a body-less `POST`, even where the endpoint takes only a path parameter.                               |
-| Drop any `content-type` / `content-length` header parameter                   | Transport headers belong to fetch, not to callers. Currently a no-op; a guard against the provider adding them.                |
+| Normalisation                                                                   | Why                                                                                                                                                                    |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rewrite the five `error.*` schemas to `{ error: { code, message, details } }`   | The document declares a flat `{ message, code, issues }` the API never sends. Verified against a live unauthenticated request.                                         |
+| Add `error.CONFLICT` and `error.RATE_LIMITED`                                   | Documented in the errors guide, absent from the document.                                                                                                              |
+| Add a `429` response to every operation                                         | The 100 req/min limit is per key, so it applies everywhere.                                                                                                            |
+| Add a `409` response to every non-`GET` operation                               | Documented for state conflicts, absent from the document.                                                                                                              |
+| Add an empty JSON request body to six body-less `POST` operations               | Terac returns `415` for a body-less `POST`, even where the endpoint takes only a path parameter.                                                                       |
+| Drop any `content-type` / `content-length` header parameter                     | Transport headers belong to fetch, not to callers. Currently a no-op; a guard against the provider adding them.                                                        |
+| Remove the closed `event_type` / `event_types` enums on the `/hooks` operations | The webhooks guide says new event types appear without a breaking change. A closed enum would make `listEventTypes()` return a value the types and Zod schemas reject. |
 
 ## Known quirks in the provider's spec
 
@@ -539,7 +642,10 @@ to delete the workaround.
   with `415` (normalised above).
 - `GET /feasibility/requests` returns `{ count, requests }`, while every other
   list endpoint returns `{ data, pagination }`.
-- Three `/quotes` operations exist in the document with no reference page.
+- Six operations exist in the document with no reference page: three under
+  `/quotes`, and the three applicant-review ones.
+- Webhook event types are declared as closed enums even though the webhooks
+  guide says new ones ship without a breaking change (normalised above).
 - Webhook deliveries and the completion callback are absent entirely.
 
 ## Scripts
@@ -551,7 +657,7 @@ to delete the workaround.
 | `format`          | Prettier check.                                                                                                                                          |
 | `format:write`    | Prettier write.                                                                                                                                          |
 | `generate`        | Regenerates `src/generated/**` from the **committed** `schemas/openapi.json`. Never touches the network.                                                 |
-| `generate:check`  | Regenerates and fails if the committed output differs.                                                                                                   |
+| `generate:check`  | Regenerates and fails if the committed output differs. Restores the committed tree on every exit, so a failed run leaves nothing behind.                 |
 | `lint`            | ESLint across the repository.                                                                                                                            |
 | `openapi-ts`      | The raw generator, for debugging.                                                                                                                        |
 | `prepublishOnly`  | Runs `check`.                                                                                                                                            |

@@ -27,22 +27,17 @@ const fencedBlocks = (language: string): string[] => {
   return [...readme.matchAll(pattern)].map((match) => match[1] ?? '')
 }
 
-/** Blocks short enough to be a one-line illustration rather than an example. */
-const isFragment = (block: string): boolean =>
-  block.trim().split('\n').length <= 2
-
 describe('README examples', () => {
   test('there are examples to check', () => {
     expect(exampleSources.length).toBeGreaterThan(0)
     expect(fencedBlocks('ts').length).toBeGreaterThan(0)
   })
 
-  test.each(
-    fencedBlocks('ts')
-      .filter((block) => !isFragment(block))
-      .map((block, index) => ({ index, block })),
-  )(
-    'multi-line ts block $index is quoted verbatim from an example file',
+  // EVERY block, one-liners included. A snippet short enough to look harmless
+  // is still a snippet that can stop compiling: the import paths and exported
+  // names in it are exactly the kind of thing a refactor moves.
+  test.each(fencedBlocks('ts').map((block, index) => ({ index, block })))(
+    'ts block $index is quoted verbatim from an example file',
     ({ block }) => {
       const matching = exampleSources.find(({ source }) =>
         source.includes(block.trim()),
@@ -63,6 +58,69 @@ describe('README examples', () => {
       expect(quoted, `${name} is not quoted in README.md`).toBe(true)
     }
   })
+})
+
+/**
+ * AGENTS.md: "Copy the endpoint docstring from `src/generated/sdk.gen.ts` into
+ * the facade JSDoc." The generated descriptions carry things a caller cannot
+ * infer from the signature — how an opportunity is priced, that an applicant
+ * is invisible to the submissions listing, that feasibility answers arrive out
+ * of band. Summarising them away is how a facade quietly becomes worse
+ * documentation than the endpoint it wraps.
+ */
+describe('facade JSDoc', () => {
+  const generatedSource = readFileSync(
+    join(repoRoot, 'src', 'generated', 'sdk.gen.ts'),
+    'utf-8',
+  )
+  const facadeSource = readFileSync(join(repoRoot, 'src', 'sdk.ts'), 'utf-8')
+
+  /**
+   * Comment text with the `*` gutter and every line break taken out, so the
+   * comparison is about the words rather than where they were wrapped.
+   */
+  const asProse = (comment: string): string =>
+    comment
+      .replace(/\/\*\*/g, '')
+      .replace(/\*\//g, '')
+      .split('\n')
+      .map((line) => line.replace(/^\s*\*\s?/, '').trim())
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const generatedDocs = [
+    ...generatedSource.matchAll(
+      /\/\*\*\n((?:[ \t]*\*.*\n)*?)[ \t]*\*\/\s*\n\s*public (\w+)</g,
+    ),
+  ].map((match) => ({
+    operation: match[2] ?? '',
+    prose: asProse(match[1] ?? ''),
+  }))
+
+  test('there are generated docstrings to compare against', () => {
+    expect(generatedDocs.length).toBeGreaterThan(30)
+    expect(generatedDocs.every(({ prose }) => prose.length > 0)).toBe(true)
+  })
+
+  test.each(generatedDocs)(
+    '$operation keeps its generated summary and description',
+    ({ operation, prose }) => {
+      const call = `this.#sdk.${operation}<true>`
+      const callIndex = facadeSource.indexOf(call)
+      expect(
+        callIndex,
+        `${operation} is not wrapped by the facade`,
+      ).toBeGreaterThan(-1)
+
+      const methodStart = facadeSource.lastIndexOf('\n  async ', callIndex)
+      const docStart = facadeSource.lastIndexOf('\n  /**', methodStart)
+      expect(docStart, `${operation} has no JSDoc block`).toBeGreaterThan(-1)
+
+      const facadeProse = asProse(facadeSource.slice(docStart, methodStart))
+      expect(facadeProse).toContain(prose)
+    },
+  )
 })
 
 type PackageJson = { scripts?: Record<string, string> }
