@@ -86,6 +86,7 @@
     "generate:check": "bash ./scripts/generate-check.sh",
     "lint": "eslint .",
     "openapi-ts": "openapi-ts",
+    "prepare": "pnpm run build",
     "prepublishOnly": "pnpm run check",
     "schema:update": "tsx ./scripts/update-schema.ts",
     "schema:validate": "tsx ./scripts/validate-openapi.ts schemas/openapi.json",

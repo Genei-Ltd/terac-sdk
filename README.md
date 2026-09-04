@@ -684,6 +684,7 @@ to delete the workaround.
 | `generate:check`  | Regenerates and fails if the committed output differs. Restores the committed tree on every exit, so a failed run leaves nothing behind.                 |
 | `lint`            | ESLint across the repository.                                                                                                                            |
 | `openapi-ts`      | The raw generator, for debugging.                                                                                                                        |
+| `prepare`         | Runs `build`, so the package also installs straight from git (`github:Genei-Ltd/terac-sdk#<sha>`).                                                       |
 | `prepublishOnly`  | Runs `check`.                                                                                                                                            |
 | `schema:update`   | Fetches Terac's document, normalises and validates it in memory, then atomically replaces `schemas/openapi.json`. The only script that uses the network. |
 | `schema:validate` | Validates the committed document.                                                                                                                        |
