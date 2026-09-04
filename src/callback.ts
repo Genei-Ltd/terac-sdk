@@ -121,6 +121,27 @@ export type TeracTaskUrlParams = {
   taskId?: string
 }
 
+/** `new URL` for a string that is an absolute URL, `undefined` for anything else. */
+const asAbsoluteUrl = (source: string): URL | undefined => {
+  try {
+    return new URL(source)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The query of a bare query string, with a leading `?` and any fragment
+ * removed. `#` cannot legally appear unescaped inside a query, so everything
+ * from the first one is a fragment rather than part of a parameter value.
+ */
+const asBareQuery = (source: string): string => {
+  const withoutFragment = source.split('#')[0] ?? ''
+  return withoutFragment.startsWith('?')
+    ? withoutFragment.slice(1)
+    : withoutFragment
+}
+
 const readParam = (
   source: TeracQuerySource,
   name: string,
@@ -132,11 +153,13 @@ const readParam = (
   } else if (source instanceof URL) {
     params = source.searchParams
   } else if (typeof source === 'string') {
-    // Accepts a full URL, a bare query string, or one with a leading `?`.
-    const queryStart = source.indexOf('?')
-    params = new URLSearchParams(
-      queryStart === -1 ? source : source.slice(queryStart + 1),
-    )
+    // An absolute URL is parsed as a URL, so its fragment stays out of the
+    // query. Slicing at the first `?` instead would read
+    // `…?teracSubmissionId=sub_1#done` as the id `sub_1#done`.
+    const absolute = asAbsoluteUrl(source)
+    params = absolute
+      ? absolute.searchParams
+      : new URLSearchParams(asBareQuery(source))
   } else {
     const value = source[name]
     if (Array.isArray(value)) {

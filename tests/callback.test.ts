@@ -108,6 +108,41 @@ describe('parseTeracTaskUrlParams', () => {
     )
   })
 
+  test('keeps a fragment out of the value, on an absolute URL', () => {
+    // Slicing at the first `?` and handing the remainder to `URLSearchParams`
+    // reads the fragment as part of the last parameter, making the id
+    // `sub_1#section`.
+    expect(
+      parseTeracTaskUrlParams(
+        'https://survey.example.com/s/abc?taskId=tsk_2&teracSubmissionId=sub_1#section',
+      ),
+    ).toEqual({ submissionId: 'sub_1', taskId: 'tsk_2' })
+
+    // A single-page-app fragment can carry its own query. It is not the query.
+    expect(
+      parseTeracTaskUrlParams(
+        'https://survey.example.com/s/abc?teracSubmissionId=sub_1#/route?teracSubmissionId=sub_evil',
+      ),
+    ).toEqual({ submissionId: 'sub_1' })
+  })
+
+  test('keeps a fragment out of the value, on a bare query string', () => {
+    expect(parseTeracTaskUrlParams('?teracSubmissionId=sub_1#section')).toEqual(
+      { submissionId: 'sub_1' },
+    )
+    expect(parseTeracTaskUrlParams('teracSubmissionId=sub_1#section')).toEqual({
+      submissionId: 'sub_1',
+    })
+  })
+
+  test('reads a URL whose path contains an encoded question mark', () => {
+    expect(
+      parseTeracTaskUrlParams(
+        'https://survey.example.com/s/a%3Fb?teracSubmissionId=sub_1',
+      ),
+    ).toEqual({ submissionId: 'sub_1' })
+  })
+
   test('throws when the two id parameters disagree', () => {
     expect(() =>
       parseTeracTaskUrlParams('?teracSubmissionId=sub_1&submissionId=sub_2'),
