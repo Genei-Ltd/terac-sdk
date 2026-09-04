@@ -107,6 +107,53 @@ describe('vendored spec', () => {
     }
   })
 
+  test('no webhook event type is a closed enum', () => {
+    // Terac adds event types without a version bump and says to read
+    // `GET /hooks/event-types`. A closed enum in the document would make a
+    // newly returned type fail the generated types and the Zod schemas — the
+    // exact case `listEventTypes()` exists to serve.
+    const closed: string[] = []
+
+    const visit = (node: unknown, where: string): void => {
+      if (Array.isArray(node)) {
+        for (const entry of node) {
+          visit(entry, where)
+        }
+        return
+      }
+      if (typeof node !== 'object' || node === null) {
+        return
+      }
+
+      const properties: unknown = Reflect.get(node, 'properties')
+      if (typeof properties === 'object' && properties !== null) {
+        for (const name of ['event_type', 'event_types']) {
+          const property: unknown = Reflect.get(properties, name)
+          if (typeof property !== 'object' || property === null) {
+            continue
+          }
+          if ('enum' in property) {
+            closed.push(`${where} ${name}`)
+          }
+          const items: unknown = Reflect.get(property, 'items')
+          if (typeof items === 'object' && items !== null && 'enum' in items) {
+            closed.push(`${where} ${name}[]`)
+          }
+        }
+      }
+
+      for (const value of Object.values(node)) {
+        visit(value, where)
+      }
+    }
+
+    for (const { path, method, operation } of operations) {
+      visit(operation, `${method.toUpperCase()} ${path}`)
+    }
+
+    expect(closed).toEqual([])
+  })
+
   test('no operation exposes a transport header as a caller parameter', () => {
     for (const { path, method, operation } of operations) {
       const headerParams = (operation.parameters ?? [])

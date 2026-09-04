@@ -16,6 +16,7 @@
  */
 import SwaggerParser from '@apidevtools/swagger-parser'
 import { rename, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const SPEC_URL = 'https://terac.com/api/external/v2/openapi.json'
@@ -57,7 +58,7 @@ type Operation = Record<string, unknown> & {
   responses?: Record<string, unknown>
 }
 
-type OpenApiDocument = Record<string, unknown> & {
+export type OpenApiDocument = Record<string, unknown> & {
   openapi?: unknown
   paths?: Record<string, unknown>
   components?: { schemas?: Record<string, unknown> }
@@ -368,6 +369,91 @@ function normalizeTransportHeaderParameters(
   return changes
 }
 
+/** Property names that hold a webhook event type, in either spelling. */
+const EVENT_TYPE_PROPERTY_NAMES = ['event_type', 'event_types'] as const
+
+/**
+ * Terac documents webhook event types as an OPEN set: new ones appear without
+ * a breaking change, and `GET /hooks/event-types` is the source of truth. The
+ * document nevertheless pins every event-type field to the two values that
+ * exist today — the listing, the subscription responses, and the create and
+ * update bodies.
+ *
+ * That closes the exact door `listEventTypes()` exists to open: a newly
+ * returned type would not type-check, and the generated Zod schema would
+ * reject it. Drop the enum wherever a schema describes an event type, leaving
+ * a plain string.
+ *
+ * @see https://terac.com/docs/developers/guides/webhooks
+ */
+function normalizeOpenWebhookEventTypes(document: OpenApiDocument): string[] {
+  const changes: string[] = []
+
+  const dropEnum = (schema: unknown, where: string): void => {
+    if (isRecord(schema) && Array.isArray(schema.enum)) {
+      delete schema.enum
+      changes.push(
+        `Removed the closed event-type enum from ${where}; Terac adds event types without a version bump, so the set is open`,
+      )
+    }
+  }
+
+  const visit = (node: unknown, where: string): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) {
+        visit(entry, where)
+      }
+      return
+    }
+
+    if (!isRecord(node)) {
+      return
+    }
+
+    const properties = node.properties
+    if (isRecord(properties)) {
+      for (const name of EVENT_TYPE_PROPERTY_NAMES) {
+        const property = properties[name]
+        if (!isRecord(property)) {
+          continue
+        }
+        dropEnum(property, `${where} at ${name}`)
+        dropEnum(property.items, `${where} at ${name}[]`)
+      }
+    }
+
+    for (const value of Object.values(node)) {
+      visit(value, where)
+    }
+  }
+
+  for (const { path, method, operationId, operation } of listOperations(
+    document,
+  )) {
+    visit(operation, `${operationId} (${method.toUpperCase()} ${path})`)
+  }
+
+  return changes
+}
+
+/**
+ * Every workaround this repository keeps against the provider's document, in
+ * the order they are applied.
+ *
+ * Exported so the same code — not a second copy of it — can be replayed over
+ * the committed document when a normalisation is added. `tests/schema.test.ts`
+ * asserts the outcome on `schemas/openapi.json`.
+ */
+export function normalizeDocument(document: OpenApiDocument): string[] {
+  return [
+    ...normalizeErrorSchemas(document),
+    ...normalizeMissingResponses(document),
+    ...normalizeBodylessPosts(document),
+    ...normalizeTransportHeaderParameters(document),
+    ...normalizeOpenWebhookEventTypes(document),
+  ]
+}
+
 function assertUsable(document: OpenApiDocument): void {
   if (typeof document.openapi !== 'string') {
     throw new Error('Fetched document is missing a top-level `openapi` version')
@@ -407,12 +493,7 @@ async function main(): Promise<void> {
   const document: OpenApiDocument = fetched
   assertUsable(document)
 
-  const changes = [
-    ...normalizeErrorSchemas(document),
-    ...normalizeMissingResponses(document),
-    ...normalizeBodylessPosts(document),
-    ...normalizeTransportHeaderParameters(document),
-  ]
+  const changes = normalizeDocument(document)
 
   console.log(`\nApplied ${String(changes.length)} normalisation(s):`)
   for (const change of changes) {
@@ -451,7 +532,16 @@ async function main(): Promise<void> {
   console.log("Run 'pnpm run generate' to regenerate the client.")
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error)
-  process.exitCode = 1
-})
+// Only fetch when this file is the process entry point. Importing it — to
+// replay `normalizeDocument` over the committed copy, for instance — must not
+// reach the network.
+const isEntryPoint =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+
+if (isEntryPoint) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error)
+    process.exitCode = 1
+  })
+}

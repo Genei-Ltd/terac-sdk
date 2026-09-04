@@ -3429,7 +3429,7 @@ export type GetHooksEventTypesResponses = {
      */
     200: {
         data: Array<{
-            event_type: 'submission.status.change' | 'submission.approved';
+            event_type: string;
             description: string;
         }>;
     };
@@ -3481,7 +3481,7 @@ export type GetHooksSubscriptionsResponses = {
         data: Array<{
             id: string;
             target_url: string;
-            event_types: Array<'submission.status.change' | 'submission.approved'>;
+            event_types: Array<string>;
             is_enabled: boolean;
             confirmed_at: string | null;
             disabled_at: string | null;
@@ -3497,7 +3497,7 @@ export type GetHooksSubscriptionsResponse = GetHooksSubscriptionsResponses[keyof
 export type PostHooksSubscriptionsData = {
     body: {
         target_url: string;
-        event_types: Array<'submission.status.change' | 'submission.approved'>;
+        event_types: Array<string>;
     };
     path?: never;
     query?: never;
@@ -3540,7 +3540,7 @@ export type PostHooksSubscriptionsResponses = {
     200: {
         id: string;
         target_url: string;
-        event_types: Array<'submission.status.change' | 'submission.approved'>;
+        event_types: Array<string>;
         is_enabled: boolean;
         confirmed_at: string | null;
         disabled_at: string | null;
@@ -3652,7 +3652,7 @@ export type GetHooksSubscriptionsBySubscriptionIdResponses = {
     200: {
         id: string;
         target_url: string;
-        event_types: Array<'submission.status.change' | 'submission.approved'>;
+        event_types: Array<string>;
         is_enabled: boolean;
         confirmed_at: string | null;
         disabled_at: string | null;
@@ -3667,7 +3667,7 @@ export type GetHooksSubscriptionsBySubscriptionIdResponse = GetHooksSubscription
 export type PatchHooksSubscriptionsBySubscriptionIdData = {
     body: {
         target_url?: string;
-        event_types?: Array<'submission.status.change' | 'submission.approved'>;
+        event_types?: Array<string>;
         is_enabled?: boolean;
     };
     path: {
@@ -3717,7 +3717,7 @@ export type PatchHooksSubscriptionsBySubscriptionIdResponses = {
     200: {
         id: string;
         target_url: string;
-        event_types: Array<'submission.status.change' | 'submission.approved'>;
+        event_types: Array<string>;
         is_enabled: boolean;
         confirmed_at: string | null;
         disabled_at: string | null;
@@ -3783,7 +3783,7 @@ export type PostHooksSubscriptionsBySubscriptionIdResponses = {
     200: {
         id: string;
         target_url: string;
-        event_types: Array<'submission.status.change' | 'submission.approved'>;
+        event_types: Array<string>;
         is_enabled: boolean;
         confirmed_at: string | null;
         disabled_at: string | null;

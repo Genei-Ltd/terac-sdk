@@ -12128,11 +12128,7 @@
                         "type": "object",
                         "properties": {
                           "event_type": {
-                            "type": "string",
-                            "enum": [
-                              "submission.status.change",
-                              "submission.approved"
-                            ]
+                            "type": "string"
                           },
                           "description": {
                             "type": "string"
@@ -12249,11 +12245,7 @@
                           "event_types": {
                             "type": "array",
                             "items": {
-                              "type": "string",
-                              "enum": [
-                                "submission.status.change",
-                                "submission.approved"
-                              ]
+                              "type": "string"
                             }
                           },
                           "is_enabled": {
@@ -12388,11 +12380,7 @@
                   "event_types": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "enum": [
-                        "submission.status.change",
-                        "submission.approved"
-                      ]
+                      "type": "string"
                     },
                     "minItems": 1
                   }
@@ -12422,11 +12410,7 @@
                     "event_types": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "enum": [
-                          "submission.status.change",
-                          "submission.approved"
-                        ]
+                        "type": "string"
                       }
                     },
                     "is_enabled": {
@@ -12572,11 +12556,7 @@
                     "event_types": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "enum": [
-                          "submission.status.change",
-                          "submission.approved"
-                        ]
+                        "type": "string"
                       }
                     },
                     "is_enabled": {
@@ -12715,11 +12695,7 @@
                   "event_types": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "enum": [
-                        "submission.status.change",
-                        "submission.approved"
-                      ]
+                      "type": "string"
                     },
                     "minItems": 1
                   },
@@ -12748,11 +12724,7 @@
                     "event_types": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "enum": [
-                          "submission.status.change",
-                          "submission.approved"
-                        ]
+                        "type": "string"
                       }
                     },
                     "is_enabled": {
@@ -12903,11 +12875,7 @@
                     "event_types": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "enum": [
-                          "submission.status.change",
-                          "submission.approved"
-                        ]
+                        "type": "string"
                       }
                     },
                     "is_enabled": {

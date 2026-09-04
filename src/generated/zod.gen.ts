@@ -2699,7 +2699,7 @@ export const zGetOrganizationsCurrentContextResponse = z.object({
  */
 export const zGetHooksEventTypesResponse = z.object({
     data: z.array(z.object({
-        event_type: z.enum(['submission.status.change', 'submission.approved']),
+        event_type: z.string(),
         description: z.string()
     }))
 });
@@ -2711,7 +2711,7 @@ export const zGetHooksSubscriptionsResponse = z.object({
     data: z.array(z.object({
         id: z.string(),
         target_url: z.string(),
-        event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])),
+        event_types: z.array(z.string()),
         is_enabled: z.boolean(),
         confirmed_at: z.string().nullable(),
         disabled_at: z.string().nullable(),
@@ -2723,7 +2723,7 @@ export const zGetHooksSubscriptionsResponse = z.object({
 
 export const zPostHooksSubscriptionsBody = z.object({
     target_url: z.url().max(2000),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])).min(1)
+    event_types: z.array(z.string()).min(1)
 });
 
 /**
@@ -2732,7 +2732,7 @@ export const zPostHooksSubscriptionsBody = z.object({
 export const zPostHooksSubscriptionsResponse = z.object({
     id: z.string(),
     target_url: z.string(),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])),
+    event_types: z.array(z.string()),
     is_enabled: z.boolean(),
     confirmed_at: z.string().nullable(),
     disabled_at: z.string().nullable(),
@@ -2764,7 +2764,7 @@ export const zGetHooksSubscriptionsBySubscriptionIdPath = z.object({
 export const zGetHooksSubscriptionsBySubscriptionIdResponse = z.object({
     id: z.string(),
     target_url: z.string(),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])),
+    event_types: z.array(z.string()),
     is_enabled: z.boolean(),
     confirmed_at: z.string().nullable(),
     disabled_at: z.string().nullable(),
@@ -2775,7 +2775,7 @@ export const zGetHooksSubscriptionsBySubscriptionIdResponse = z.object({
 
 export const zPatchHooksSubscriptionsBySubscriptionIdBody = z.object({
     target_url: z.url().max(2000).optional(),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])).min(1).optional(),
+    event_types: z.array(z.string()).min(1).optional(),
     is_enabled: z.boolean().optional()
 });
 
@@ -2789,7 +2789,7 @@ export const zPatchHooksSubscriptionsBySubscriptionIdPath = z.object({
 export const zPatchHooksSubscriptionsBySubscriptionIdResponse = z.object({
     id: z.string(),
     target_url: z.string(),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])),
+    event_types: z.array(z.string()),
     is_enabled: z.boolean(),
     confirmed_at: z.string().nullable(),
     disabled_at: z.string().nullable(),
@@ -2813,7 +2813,7 @@ export const zPostHooksSubscriptionsBySubscriptionIdPath = z.object({
 export const zPostHooksSubscriptionsBySubscriptionIdResponse = z.object({
     id: z.string(),
     target_url: z.string(),
-    event_types: z.array(z.enum(['submission.status.change', 'submission.approved'])),
+    event_types: z.array(z.string()),
     is_enabled: z.boolean(),
     confirmed_at: z.string().nullable(),
     disabled_at: z.string().nullable(),
