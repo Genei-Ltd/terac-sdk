@@ -1,0 +1,5 @@
+# Won't install versions published in the last 7 days (supply-chain cooldown).
+minimumReleaseAge: 10080 # minutes
+
+onlyBuiltDependencies:
+  - esbuild

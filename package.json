@@ -1,0 +1,116 @@
+{
+  "name": "@coloop-ai/terac-sdk",
+  "version": "0.1.0",
+  "description": "Type-safe SDK for the Terac External API, generated from the provider's OpenAPI spec.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Genei-Ltd/terac-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Genei-Ltd/terac-sdk/issues"
+  },
+  "homepage": "https://github.com/Genei-Ltd/terac-sdk#readme",
+  "keywords": [
+    "terac",
+    "recruitment",
+    "research",
+    "panel",
+    "sdk",
+    "typescript",
+    "openapi"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "packageManager": "pnpm@10.33.1",
+  "files": [
+    "dist",
+    "schemas/openapi.json"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./webhooks": {
+      "import": {
+        "types": "./dist/webhooks.d.mts",
+        "default": "./dist/webhooks.mjs"
+      },
+      "require": {
+        "types": "./dist/webhooks.d.cts",
+        "default": "./dist/webhooks.cjs"
+      }
+    },
+    "./callback": {
+      "import": {
+        "types": "./dist/callback.d.mts",
+        "default": "./dist/callback.mjs"
+      },
+      "require": {
+        "types": "./dist/callback.d.cts",
+        "default": "./dist/callback.cjs"
+      }
+    },
+    "./zod": {
+      "import": {
+        "types": "./dist/zod.d.mts",
+        "default": "./dist/zod.mjs"
+      },
+      "require": {
+        "types": "./dist/zod.d.cts",
+        "default": "./dist/zod.cjs"
+      }
+    },
+    "./schemas/openapi.json": "./schemas/openapi.json",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown --config tsdown.config.ts",
+    "check": "pnpm run schema:validate && pnpm run generate:check && pnpm run tc && pnpm run lint && pnpm run format && pnpm run build && pnpm run test run",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "generate": "bash ./scripts/generate.sh",
+    "generate:check": "bash ./scripts/generate-check.sh",
+    "lint": "eslint .",
+    "openapi-ts": "openapi-ts",
+    "prepublishOnly": "pnpm run check",
+    "schema:update": "tsx ./scripts/update-schema.ts",
+    "schema:validate": "tsx ./scripts/validate-openapi.ts schemas/openapi.json",
+    "tc": "tsc -p tsconfig.json --pretty --noEmit",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "@eslint/js": "^10.0.1",
+    "@hey-api/openapi-ts": "^0.99.0",
+    "@types/node": "^26.4.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "tsdown": "^0.22.14",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
