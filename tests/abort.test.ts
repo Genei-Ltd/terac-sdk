@@ -63,6 +63,64 @@ describe('caller-supplied AbortSignal', () => {
     await server.close()
   })
 
+  // The guarantee is identity, not truthiness. A falsy reason used to be lost
+  // twice over: `reason ?? error` in the fetch wrapper, and the generated
+  // client's `finalError || {}` on anything the error interceptor RETURNED.
+  describe.each([
+    ['an empty string', ''],
+    ['zero', 0],
+    ['false', false],
+    ['null', null],
+  ])('a falsy abort reason (%s)', (_name, reason) => {
+    test('survives an abort before dispatch', async () => {
+      const server = await startServer((_request, response) => {
+        json(response, 200, { data: [], pagination: {} })
+      })
+      const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+      const controller = new AbortController()
+      controller.abort(reason)
+
+      const settled = await terac.projects
+        .list(undefined, { signal: controller.signal })
+        .then(
+          () => ({ rejected: false, error: undefined }),
+          (error: unknown) => ({ rejected: true, error }),
+        )
+
+      expect(settled.rejected).toBe(true)
+      expect(settled.error).toBe(reason)
+      expect(server.requests).toHaveLength(0)
+
+      await server.close()
+    })
+
+    test('survives an abort mid-flight', async () => {
+      const server = await startServer(() => {
+        // Never answers.
+      })
+      const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+      const controller = new AbortController()
+      const pending = terac.projects.list(undefined, {
+        signal: controller.signal,
+      })
+      setTimeout(() => {
+        controller.abort(reason)
+      }, 20)
+
+      const settled = await pending.then(
+        () => ({ rejected: false, error: undefined }),
+        (error: unknown) => ({ rejected: true, error }),
+      )
+
+      expect(settled.rejected).toBe(true)
+      expect(settled.error).toBe(reason)
+
+      await server.close()
+    })
+  })
+
   test('the signal reaches every operation shape', async () => {
     const server = await startServer(() => {
       // Never answers.

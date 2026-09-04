@@ -212,6 +212,67 @@ describe('response header redaction', () => {
   })
 })
 
+describe('response decoding does not follow Content-Type', () => {
+  // The client is pinned to `parseAs: 'json'`. On `auto` it picks a decoder
+  // from the header, so JSON labelled `text/plain` would be handed back as a
+  // string and a body with no content type as a `ReadableStream` — both of
+  // them lies about the declared return type.
+  test('decodes JSON that is mislabelled as text/plain', async () => {
+    const server = await startServer((_request, response) => {
+      const body = JSON.stringify({ data: [{ id: 'prj_1' }], pagination: {} })
+      response.writeHead(200, {
+        'content-type': 'text/plain',
+        'content-length': String(Buffer.byteLength(body)),
+      })
+      response.end(body)
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const result = await terac.projects.list()
+    expect(result.data[0]?.id).toBe('prj_1')
+
+    await server.close()
+  })
+
+  test('decodes JSON sent with no Content-Type at all', async () => {
+    const server = await startServer((_request, response) => {
+      const body = JSON.stringify({ data: [{ id: 'prj_2' }], pagination: {} })
+      response.writeHead(200, {
+        'content-length': String(Buffer.byteLength(body)),
+      })
+      response.end(body)
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const result = await terac.projects.list()
+    expect(result.data[0]?.id).toBe('prj_2')
+
+    await server.close()
+  })
+
+  test('a non-JSON success body is a TeracResponseError, not a string', async () => {
+    const server = await startServer((_request, response) => {
+      const body = 'totally not json'
+      response.writeHead(200, {
+        'content-type': 'text/plain',
+        'content-length': String(Buffer.byteLength(body)),
+      })
+      response.end(body)
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const error = await terac.projects.list().catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(TeracResponseError)
+    if (!(error instanceof TeracResponseError)) {
+      throw new Error('expected a TeracResponseError')
+    }
+    expect(error.status).toBe(200)
+    expect(error.cause).toBeInstanceOf(SyntaxError)
+
+    await server.close()
+  })
+})
+
 describe('parseTeracErrorBody', () => {
   test('reads the nested shape the API actually returns', () => {
     expect(

@@ -868,6 +868,13 @@ export class TeracSdk {
       // still gets the safe default.
       redirect: 'error',
       fetch: createTeracFetch(timeoutMs === undefined ? {} : { timeoutMs }),
+      // Every response this API declares is JSON. Left on `auto`, the client
+      // picks a decoder from the `Content-Type`: JSON labelled `text/plain`
+      // would come back as a string and a response with no content type as a
+      // `ReadableStream`, both of them lies about the declared return type.
+      // Pinning it to `json` means a body that is not JSON raises a
+      // `TeracResponseError` instead.
+      parseAs: 'json',
       responseStyle: 'fields',
       throwOnError: true,
     })
@@ -880,8 +887,13 @@ export class TeracSdk {
       // A caller abort is the caller's own value. `Request` clones the signal
       // it is given but carries the same `reason` object across, so this is an
       // identity check on the reason the caller chose — never a guess.
+      //
+      // THROWN, not returned: the generated client coalesces a returned error
+      // with `finalError || {}`, which would turn `abort('')`, `abort(0)` and
+      // `abort(false)` into an empty object. Throwing from the interceptor
+      // leaves the caller's reason exactly as it was.
       if (request?.signal.aborted && Object.is(request.signal.reason, error)) {
-        return error
+        throw error
       }
 
       const summary = request ? summarizeRequest(request) : undefined

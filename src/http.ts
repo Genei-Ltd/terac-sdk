@@ -129,7 +129,12 @@ export const createTeracFetch = ({
       }
 
       if (callerSignal.aborted) {
-        throw callerSignal.reason ?? error
+        // The caller's reason, exactly as given. No `??` fallback: a caller
+        // who aborts with `null`, `''`, `0` or `false` gets that value back,
+        // because the documented guarantee is identity, not truthiness.
+        // `signal.reason` is never `undefined` once `aborted` is true —
+        // `abort()` with no argument fills in an `AbortError`.
+        throw callerSignal.reason
       }
 
       if (isTeracError(error)) {
