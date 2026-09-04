@@ -18,6 +18,12 @@
  * are treated the same way, by
  * {@link summarizeResponseHeaders} — an allow-list, because a header name
  * nobody anticipated is exactly where an echoed credential turns up.
+ *
+ * An allow-list alone is not enough: the VALUES on it are still written by the
+ * server, and so is the response body. The status text and the allow-listed
+ * header values go through {@link redactApiKey}; the body goes through
+ * {@link redactPayload}, and `message`, `code` and `details` are read back out
+ * of that scrubbed body. A `cause` is attached exactly as it was thrown.
  */
 
 /** Header values that are safe to reproduce in an error. */
@@ -31,6 +37,42 @@ const REPRODUCIBLE_HEADER_NAMES = new Set([
 ])
 
 export const REDACTED = '[redacted]'
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * Server-controlled text with the API key taken out of it.
+ *
+ * Terac does not echo the credential, but nothing between this process and
+ * Terac is under our control. A proxy that reflects the request into a
+ * response header or into an error message would otherwise put the key on an
+ * ordinary, loggable error.
+ */
+export const redactApiKey = (value: string, apiKey: string): string =>
+  // The whole header value first, so a reflected `Bearer <key>` is replaced as
+  // one unit rather than left as `Bearer [redacted]`.
+  value.split(`Bearer ${apiKey}`).join(REDACTED).split(apiKey).join(REDACTED)
+
+/**
+ * A decoded response body with the API key taken out of it, by round-tripping
+ * it through JSON with {@link redactApiKey} applied to the serialized text.
+ *
+ * A body that cannot round-trip is dropped rather than reported unscrubbed.
+ */
+export const redactPayload = (payload: unknown, apiKey: string): unknown => {
+  if (payload === undefined) {
+    return undefined
+  }
+  try {
+    const scrubbed: unknown = JSON.parse(
+      redactApiKey(JSON.stringify(payload), apiKey),
+    )
+    return scrubbed
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * A request, reduced to what is useful in a log and safe to put there.
@@ -74,7 +116,8 @@ export const summarizeRequest = (request: Request): TeracRequestSummary => ({
  * `responseHeaders`, `JSON.stringify(error)` and `util.inspect(error)`.
  *
  * Every header NAME is still kept, so "the server sent a `Set-Cookie`" stays
- * visible; only the values a caller genuinely acts on survive.
+ * visible; only the values a caller genuinely acts on survive, and those are
+ * scrubbed of the API key before they do.
  */
 const REPRODUCIBLE_RESPONSE_HEADER_NAMES = new Set([
   // Backoff.
@@ -105,13 +148,14 @@ const REPRODUCIBLE_RESPONSE_HEADER_NAMES = new Set([
  */
 export const summarizeResponseHeaders = (
   response: Response,
+  apiKey: string,
 ): Record<string, string> => {
   const summarized: Record<string, string> = {}
   response.headers.forEach((value, name) => {
     summarized[name] = REPRODUCIBLE_RESPONSE_HEADER_NAMES.has(
       name.toLowerCase(),
     )
-      ? value
+      ? redactApiKey(value, apiKey)
       : REDACTED
   })
   return summarized
@@ -141,9 +185,6 @@ export class TeracError extends Error {
 
 export const isTeracError = (error: unknown): error is TeracError =>
   error instanceof TeracError
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const toNonEmptyString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -240,7 +281,7 @@ export class TeracApiError extends TeracError {
   public readonly code?: string
   /** Field-level validation errors, when Terac attributes the failure. */
   public readonly details?: TeracErrorDetail[]
-  /** The decoded response body, exactly as received. */
+  /** The decoded response body, with the API key scrubbed out of it. */
   public readonly payload: unknown
   public readonly responseHeaders: Record<string, string>
 

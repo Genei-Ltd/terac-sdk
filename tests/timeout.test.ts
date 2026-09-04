@@ -17,6 +17,24 @@ describe('timeoutMs', () => {
     ).toThrow(/positive number/)
   })
 
+  test('rejects a timeout above the largest delay setTimeout honours', () => {
+    // `setTimeout` wraps a delay above 2_147_483_647ms round to 1ms, so a
+    // caller asking for a very long deadline would otherwise have every
+    // request aborted almost at once.
+    expect(
+      () => new TeracSdk({ apiKey: API_KEY, timeoutMs: 2_147_483_648 }),
+    ).toThrow(/at most 2147483647ms/)
+    expect(
+      () =>
+        new TeracSdk({ apiKey: API_KEY, timeoutMs: Number.MAX_SAFE_INTEGER }),
+    ).toThrow(/at most 2147483647ms/)
+
+    // The boundary itself is still accepted.
+    expect(
+      () => new TeracSdk({ apiKey: API_KEY, timeoutMs: 2_147_483_647 }),
+    ).not.toThrow()
+  })
+
   test('trips when the server never answers', async () => {
     const server = await startServer(() => {
       // Never answers.

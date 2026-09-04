@@ -131,7 +131,12 @@ export type TeracWebhookDeliveryEnvelope = {
   occurredAt?: string
   /** The parsed body. */
   event: TeracWebhookEvent
-  /** The exact bytes that were verified. */
+  /**
+   * The verified body, decoded as UTF-8.
+   *
+   * Verification refuses a body that is not valid UTF-8, so this re-encodes to
+   * exactly the bytes the signature covered.
+   */
   rawBody: string
 }
 
@@ -222,6 +227,50 @@ const readSingleHeader = (
     )
   }
   return value.trim()
+}
+
+/**
+ * `fatal`, so an invalid sequence throws instead of becoming U+FFFD.
+ *
+ * A lenient decode substitutes the replacement character, `JSON.parse` then
+ * accepts the result, and the `rawBody` handed back is a string the sender
+ * never sent. A delivery Terac signed correctly is always valid UTF-8, so
+ * anything else is a corrupted body and is refused.
+ */
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+
+const decodeUtf8 = (bytes: Uint8Array): string => {
+  try {
+    return UTF8_DECODER.decode(bytes)
+  } catch {
+    throw new TeracWebhookVerificationError(
+      'malformed_payload',
+      'Body is not valid UTF-8',
+    )
+  }
+}
+
+/**
+ * The body's signed `event_id`, or `undefined` when the body has no such
+ * property.
+ *
+ * A body that OWNS `event_id` must carry a usable one. Reading an empty or
+ * non-string value as "absent" would fall back to the unsigned `X-Event-ID`
+ * header, which is the replay the signed-value rule exists to stop.
+ */
+const readSignedEventId = (event: TeracWebhookEvent): string | undefined => {
+  if (!Object.hasOwn(event, 'event_id')) {
+    return undefined
+  }
+
+  const value: unknown = event.event_id
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new TeracWebhookVerificationError(
+      'malformed_payload',
+      'Body carries an event_id that is not a non-empty string',
+    )
+  }
+  return value
 }
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
@@ -386,10 +435,7 @@ export const verifyTeracWebhook = ({
   }
 
   // Only now, with the bytes proven authentic, decode them for JSON.
-  const rawBody =
-    typeof payload === 'string'
-      ? payload
-      : Buffer.from(payload).toString('utf-8')
+  const rawBody = typeof payload === 'string' ? payload : decodeUtf8(payload)
 
   let parsed: unknown
   try {
@@ -423,10 +469,7 @@ export const verifyTeracWebhook = ({
   // agree with it: letting an unsigned header decide would let a captured
   // delivery be replayed under a fresh id, straight past deduplication.
   const headerEventId = readSingleHeader(headers, TERAC_EVENT_ID_HEADER)
-  const signedEventId =
-    typeof event.event_id === 'string' && event.event_id.length > 0
-      ? event.event_id
-      : undefined
+  const signedEventId = readSignedEventId(event)
 
   if (
     signedEventId !== undefined &&

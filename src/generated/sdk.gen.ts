@@ -18,652 +18,534 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-class HeyApiClient {
-    protected client: Client;
-    
-    constructor(args?: {
-        client?: Client;
-    }) {
-        this.client = args?.client ?? client;
-    }
-}
+/**
+ * List projects
+ */
+export const getProjects = <ThrowOnError extends boolean = false>(options?: Options<GetProjectsData, ThrowOnError>): RequestResult<GetProjectsResponses, GetProjectsErrors, ThrowOnError> => (options?.client ?? client).get<GetProjectsResponses, GetProjectsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/projects',
+    ...options
+});
 
-class HeyApiRegistry<T> {
-    private readonly defaultKey = 'default';
-    
-    private readonly instances: Map<string, T> = new Map();
-    
-    get(key?: string): T {
-        const instance = this.instances.get(key ?? this.defaultKey);
-        if (!instance) {
-            throw new Error(`No SDK client found. Create one with "new GeneratedTeracSdk()" to fix this error.`);
-        }
-        return instance;
+/**
+ * Create a project
+ */
+export const postProjects = <ThrowOnError extends boolean = false>(options: Options<PostProjectsData, ThrowOnError>): RequestResult<PostProjectsResponses, PostProjectsErrors, ThrowOnError> => (options.client ?? client).post<PostProjectsResponses, PostProjectsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/projects',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    set(value: T, key?: string): void {
-        this.instances.set(key ?? this.defaultKey, value);
-    }
-}
+});
 
-export class GeneratedTeracSdk extends HeyApiClient {
-    public static readonly __registry: HeyApiRegistry<GeneratedTeracSdk> = new HeyApiRegistry<GeneratedTeracSdk>();
-    
-    constructor(args?: {
-        client?: Client;
-        key?: string;
-    }) {
-        super(args);
-        GeneratedTeracSdk.__registry.set(this, args?.key);
+/**
+ * Get project details
+ */
+export const getProjectsByProjectId = <ThrowOnError extends boolean = false>(options: Options<GetProjectsByProjectIdData, ThrowOnError>): RequestResult<GetProjectsByProjectIdResponses, GetProjectsByProjectIdErrors, ThrowOnError> => (options.client ?? client).get<GetProjectsByProjectIdResponses, GetProjectsByProjectIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/projects/{projectId}',
+    ...options
+});
+
+/**
+ * Update a project
+ */
+export const patchProjectsByProjectId = <ThrowOnError extends boolean = false>(options: Options<PatchProjectsByProjectIdData, ThrowOnError>): RequestResult<PatchProjectsByProjectIdResponses, PatchProjectsByProjectIdErrors, ThrowOnError> => (options.client ?? client).patch<PatchProjectsByProjectIdResponses, PatchProjectsByProjectIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/projects/{projectId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List projects
-     */
-    public getProjects<ThrowOnError extends boolean = false>(options?: Options<GetProjectsData, ThrowOnError>): RequestResult<GetProjectsResponses, GetProjectsErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetProjectsResponses, GetProjectsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/projects',
-            ...options
-        });
+});
+
+/**
+ * List available filters
+ */
+export const getFilters = <ThrowOnError extends boolean = false>(options?: Options<GetFiltersData, ThrowOnError>): RequestResult<GetFiltersResponses, GetFiltersErrors, ThrowOnError> => (options?.client ?? client).get<GetFiltersResponses, GetFiltersErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/filters',
+    ...options
+});
+
+/**
+ * List options for a filter
+ */
+export const getFiltersByFilterSlugOptions = <ThrowOnError extends boolean = false>(options: Options<GetFiltersByFilterSlugOptionsData, ThrowOnError>): RequestResult<GetFiltersByFilterSlugOptionsResponses, GetFiltersByFilterSlugOptionsErrors, ThrowOnError> => (options.client ?? client).get<GetFiltersByFilterSlugOptionsResponses, GetFiltersByFilterSlugOptionsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/filters/{filter_slug}/options',
+    ...options
+});
+
+/**
+ * List opportunities
+ */
+export const getOpportunities = <ThrowOnError extends boolean = false>(options?: Options<GetOpportunitiesData, ThrowOnError>): RequestResult<GetOpportunitiesResponses, GetOpportunitiesErrors, ThrowOnError> => (options?.client ?? client).get<GetOpportunitiesResponses, GetOpportunitiesErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities',
+    ...options
+});
+
+/**
+ * Create a draft opportunity
+ *
+ * Creates the opportunity as a DRAFT. Nothing is charged and no recruitment starts until you call
+ * `POST /opportunities/{opportunityId}/launch`.
+ *
+ * **The incentive is derived, not sent.** There is no field for participant pay, and the amount is
+ * fixed when the draft is created. Two paths decide which number you get:
+ *
+ * - **Omit `feasibility_request_id`** and the incentive is an automatic estimate made during this
+ * call. It is priced from the whole brief, not just its size: the participant count, the task
+ * duration, the audience your `filters` and `screening_questions` describe, and the recruitment
+ * window from `expected_days_to_complete`. Changing any of those changes the price, so read the
+ * result back from `pricing` on the response; do not quote a price to anyone before you have.
+ * - **Pass a `feasibility_request_id`** and that request's confirmed CPI is honored exactly, with no
+ * re-estimate. Submit the brief to `POST /feasibility/requests` first and poll
+ * `GET /feasibility/requests/{requestId}` until it reads `RESPONDED`, which is when a price exists.
+ * This is the way to control what participants are paid.
+ *
+ * The platform fee follows the same split. Priced by feasibility, the confirmed recruitment fee
+ * becomes this opportunity's fee, as a flat per-participant amount, so the all-in CPI you agreed is
+ * the one you are charged. Priced automatically, it comes from the organization's configuration
+ * instead. Either way it is not a per-opportunity input, and neither is the currency (always USD) or
+ * the pay cadence (always `one_time`). `pricing` on the response carries the all-in cost per
+ * participant and the total, and `funding` says whether the balance covers a launch.
+ *
+ * Editing after this call is draft-only: `PATCH /opportunities/{opportunityId}` returns 409 once the
+ * opportunity is launched, and a new recruitment window moves the deadline without re-pricing.
+ */
+export const postOpportunities = <ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesData, ThrowOnError>): RequestResult<PostOpportunitiesResponses, PostOpportunitiesErrors, ThrowOnError> => (options.client ?? client).post<PostOpportunitiesResponses, PostOpportunitiesErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Create a project
-     */
-    public postProjects<ThrowOnError extends boolean = false>(options: Options<PostProjectsData, ThrowOnError>): RequestResult<PostProjectsResponses, PostProjectsErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostProjectsResponses, PostProjectsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/projects',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Delete a draft opportunity
+ */
+export const deleteOpportunitiesByOpportunityId = <ThrowOnError extends boolean = false>(options: Options<DeleteOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<DeleteOpportunitiesByOpportunityIdResponses, DeleteOpportunitiesByOpportunityIdErrors, ThrowOnError> => (options.client ?? client).delete<DeleteOpportunitiesByOpportunityIdResponses, DeleteOpportunitiesByOpportunityIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}',
+    ...options
+});
+
+/**
+ * Get opportunity details
+ */
+export const getOpportunitiesByOpportunityId = <ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdResponses, GetOpportunitiesByOpportunityIdErrors, ThrowOnError> => (options.client ?? client).get<GetOpportunitiesByOpportunityIdResponses, GetOpportunitiesByOpportunityIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}',
+    ...options
+});
+
+/**
+ * Update opportunity
+ */
+export const patchOpportunitiesByOpportunityId = <ThrowOnError extends boolean = false>(options: Options<PatchOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<PatchOpportunitiesByOpportunityIdResponses, PatchOpportunitiesByOpportunityIdErrors, ThrowOnError> => (options.client ?? client).patch<PatchOpportunitiesByOpportunityIdResponses, PatchOpportunitiesByOpportunityIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Get project details
-     */
-    public getProjectsByProjectId<ThrowOnError extends boolean = false>(options: Options<GetProjectsByProjectIdData, ThrowOnError>): RequestResult<GetProjectsByProjectIdResponses, GetProjectsByProjectIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetProjectsByProjectIdResponses, GetProjectsByProjectIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/projects/{projectId}',
-            ...options
-        });
+});
+
+/**
+ * Launch an opportunity from a quote
+ *
+ * Creates and launches a research opportunity from a previously created quote. AI generation, billing, and activation happen asynchronously after this returns. Optionally provide projectId to place the opportunity in a specific project.
+ */
+export const postQuotesByQuoteIdLaunch = <ThrowOnError extends boolean = false>(options: Options<PostQuotesByQuoteIdLaunchData, ThrowOnError>): RequestResult<PostQuotesByQuoteIdLaunchResponses, PostQuotesByQuoteIdLaunchErrors, ThrowOnError> => (options.client ?? client).post<PostQuotesByQuoteIdLaunchResponses, PostQuotesByQuoteIdLaunchErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/quotes/{quoteId}/launch',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Update a project
-     */
-    public patchProjectsByProjectId<ThrowOnError extends boolean = false>(options: Options<PatchProjectsByProjectIdData, ThrowOnError>): RequestResult<PatchProjectsByProjectIdResponses, PatchProjectsByProjectIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchProjectsByProjectIdResponses, PatchProjectsByProjectIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/projects/{projectId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Launch opportunity
+ */
+export const postOpportunitiesByOpportunityIdLaunch = <ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdLaunchData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdLaunchResponses, PostOpportunitiesByOpportunityIdLaunchErrors, ThrowOnError> => (options.client ?? client).post<PostOpportunitiesByOpportunityIdLaunchResponses, PostOpportunitiesByOpportunityIdLaunchErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/launch',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List available filters
-     */
-    public getFilters<ThrowOnError extends boolean = false>(options?: Options<GetFiltersData, ThrowOnError>): RequestResult<GetFiltersResponses, GetFiltersErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetFiltersResponses, GetFiltersErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/filters',
-            ...options
-        });
+});
+
+/**
+ * Pause opportunity
+ */
+export const postOpportunitiesByOpportunityIdPause = <ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdPauseData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdPauseResponses, PostOpportunitiesByOpportunityIdPauseErrors, ThrowOnError> => (options.client ?? client).post<PostOpportunitiesByOpportunityIdPauseResponses, PostOpportunitiesByOpportunityIdPauseErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/pause',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List options for a filter
-     */
-    public getFiltersByFilterSlugOptions<ThrowOnError extends boolean = false>(options: Options<GetFiltersByFilterSlugOptionsData, ThrowOnError>): RequestResult<GetFiltersByFilterSlugOptionsResponses, GetFiltersByFilterSlugOptionsErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetFiltersByFilterSlugOptionsResponses, GetFiltersByFilterSlugOptionsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/filters/{filter_slug}/options',
-            ...options
-        });
+});
+
+/**
+ * Resume opportunity
+ */
+export const postOpportunitiesByOpportunityIdResume = <ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdResumeData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdResumeResponses, PostOpportunitiesByOpportunityIdResumeErrors, ThrowOnError> => (options.client ?? client).post<PostOpportunitiesByOpportunityIdResumeResponses, PostOpportunitiesByOpportunityIdResumeErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/resume',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List opportunities
-     */
-    public getOpportunities<ThrowOnError extends boolean = false>(options?: Options<GetOpportunitiesData, ThrowOnError>): RequestResult<GetOpportunitiesResponses, GetOpportunitiesErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetOpportunitiesResponses, GetOpportunitiesErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities',
-            ...options
-        });
+});
+
+/**
+ * Stop opportunity
+ */
+export const postOpportunitiesByOpportunityIdStop = <ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdStopData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdStopResponses, PostOpportunitiesByOpportunityIdStopErrors, ThrowOnError> => (options.client ?? client).post<PostOpportunitiesByOpportunityIdStopResponses, PostOpportunitiesByOpportunityIdStopErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/stop',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Create a draft opportunity
-     *
-     * Creates the opportunity as a DRAFT. Nothing is charged and no recruitment starts until you call
-     * `POST /opportunities/{opportunityId}/launch`.
-     *
-     * **The incentive is derived, not sent.** There is no field for participant pay, and the amount is
-     * fixed when the draft is created. Two paths decide which number you get:
-     *
-     * - **Omit `feasibility_request_id`** and the incentive is an automatic estimate made during this
-     * call. It is priced from the whole brief, not just its size: the participant count, the task
-     * duration, the audience your `filters` and `screening_questions` describe, and the recruitment
-     * window from `expected_days_to_complete`. Changing any of those changes the price, so read the
-     * result back from `pricing` on the response; do not quote a price to anyone before you have.
-     * - **Pass a `feasibility_request_id`** and that request's confirmed CPI is honored exactly, with no
-     * re-estimate. Submit the brief to `POST /feasibility/requests` first and poll
-     * `GET /feasibility/requests/{requestId}` until it reads `RESPONDED`, which is when a price exists.
-     * This is the way to control what participants are paid.
-     *
-     * The platform fee follows the same split. Priced by feasibility, the confirmed recruitment fee
-     * becomes this opportunity's fee, as a flat per-participant amount, so the all-in CPI you agreed is
-     * the one you are charged. Priced automatically, it comes from the organization's configuration
-     * instead. Either way it is not a per-opportunity input, and neither is the currency (always USD) or
-     * the pay cadence (always `one_time`). `pricing` on the response carries the all-in cost per
-     * participant and the total, and `funding` says whether the balance covers a launch.
-     *
-     * Editing after this call is draft-only: `PATCH /opportunities/{opportunityId}` returns 409 once the
-     * opportunity is launched, and a new recruitment window moves the deadline without re-pricing.
-     */
-    public postOpportunities<ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesData, ThrowOnError>): RequestResult<PostOpportunitiesResponses, PostOpportunitiesErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostOpportunitiesResponses, PostOpportunitiesErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * List submissions for an opportunity
+ */
+export const getOpportunitiesByOpportunityIdSubmissions = <ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdSubmissionsData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdSubmissionsResponses, GetOpportunitiesByOpportunityIdSubmissionsErrors, ThrowOnError> => (options.client ?? client).get<GetOpportunitiesByOpportunityIdSubmissionsResponses, GetOpportunitiesByOpportunityIdSubmissionsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/submissions',
+    ...options
+});
+
+/**
+ * List applicants awaiting your invite decision
+ *
+ * Applicants who passed screening and are waiting on your decision to invite them.
+ *
+ * They are deliberately absent from `GET /opportunities/{opportunityId}/submissions`: an applicant
+ * here has not been invited yet, so they hold no submission status, and `GET /submissions/{id}`
+ * returns 404 for them. This collection is where they exist until you decide.
+ *
+ * Act on one with `POST /submissions/{submissionId}/invite` or `/decline`. Inviting makes them
+ * `screen_passed` and starts their tasks; declining makes them `screened_out`. Either way they
+ * leave this collection and appear in the submissions listing from then on.
+ *
+ * An opportunity on `manual_review` routes every qualified applicant here. One on `auto_invite`
+ * still routes an individual applicant here when a screening answer you marked `review` flags
+ * them, so poll this even when you did not opt into reviewing everyone.
+ */
+export const getOpportunitiesByOpportunityIdApplicants = <ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdApplicantsData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdApplicantsResponses, GetOpportunitiesByOpportunityIdApplicantsErrors, ThrowOnError> => (options.client ?? client).get<GetOpportunitiesByOpportunityIdApplicantsResponses, GetOpportunitiesByOpportunityIdApplicantsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/opportunities/{opportunityId}/applicants',
+    ...options
+});
+
+/**
+ * Invite an applicant awaiting your decision
+ *
+ * Invites an applicant sitting in your applicant-review queue, which materializes their tasks and notifies them. The submission becomes `screen_passed`. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
+ */
+export const postSubmissionsBySubmissionIdInvite = <ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdInviteData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdInviteResponses, PostSubmissionsBySubmissionIdInviteErrors, ThrowOnError> => (options.client ?? client).post<PostSubmissionsBySubmissionIdInviteResponses, PostSubmissionsBySubmissionIdInviteErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/submissions/{submissionId}/invite',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Delete a draft opportunity
-     */
-    public deleteOpportunitiesByOpportunityId<ThrowOnError extends boolean = false>(options: Options<DeleteOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<DeleteOpportunitiesByOpportunityIdResponses, DeleteOpportunitiesByOpportunityIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteOpportunitiesByOpportunityIdResponses, DeleteOpportunitiesByOpportunityIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}',
-            ...options
-        });
+});
+
+/**
+ * Decline an applicant awaiting your decision
+ *
+ * Declines an applicant sitting in your applicant-review queue. The submission becomes `screened_out` and they are not invited. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
+ */
+export const postSubmissionsBySubmissionIdDecline = <ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdDeclineData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdDeclineResponses, PostSubmissionsBySubmissionIdDeclineErrors, ThrowOnError> => (options.client ?? client).post<PostSubmissionsBySubmissionIdDeclineResponses, PostSubmissionsBySubmissionIdDeclineErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/submissions/{submissionId}/decline',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Get opportunity details
-     */
-    public getOpportunitiesByOpportunityId<ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdResponses, GetOpportunitiesByOpportunityIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetOpportunitiesByOpportunityIdResponses, GetOpportunitiesByOpportunityIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}',
-            ...options
-        });
+});
+
+/**
+ * Get submission details
+ */
+export const getSubmissionsBySubmissionId = <ThrowOnError extends boolean = false>(options: Options<GetSubmissionsBySubmissionIdData, ThrowOnError>): RequestResult<GetSubmissionsBySubmissionIdResponses, GetSubmissionsBySubmissionIdErrors, ThrowOnError> => (options.client ?? client).get<GetSubmissionsBySubmissionIdResponses, GetSubmissionsBySubmissionIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/submissions/{submissionId}',
+    ...options
+});
+
+/**
+ * Approve a submission
+ */
+export const postSubmissionsBySubmissionIdApprove = <ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdApproveData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdApproveResponses, PostSubmissionsBySubmissionIdApproveErrors, ThrowOnError> => (options.client ?? client).post<PostSubmissionsBySubmissionIdApproveResponses, PostSubmissionsBySubmissionIdApproveErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/submissions/{submissionId}/approve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Update opportunity
-     */
-    public patchOpportunitiesByOpportunityId<ThrowOnError extends boolean = false>(options: Options<PatchOpportunitiesByOpportunityIdData, ThrowOnError>): RequestResult<PatchOpportunitiesByOpportunityIdResponses, PatchOpportunitiesByOpportunityIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchOpportunitiesByOpportunityIdResponses, PatchOpportunitiesByOpportunityIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Reject a submission
+ */
+export const postSubmissionsBySubmissionIdReject = <ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdRejectData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdRejectResponses, PostSubmissionsBySubmissionIdRejectErrors, ThrowOnError> => (options.client ?? client).post<PostSubmissionsBySubmissionIdRejectResponses, PostSubmissionsBySubmissionIdRejectErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/submissions/{submissionId}/reject',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Launch an opportunity from a quote
-     *
-     * Creates and launches a research opportunity from a previously created quote. AI generation, billing, and activation happen asynchronously after this returns. Optionally provide projectId to place the opportunity in a specific project.
-     */
-    public postQuotesByQuoteIdLaunch<ThrowOnError extends boolean = false>(options: Options<PostQuotesByQuoteIdLaunchData, ThrowOnError>): RequestResult<PostQuotesByQuoteIdLaunchResponses, PostQuotesByQuoteIdLaunchErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostQuotesByQuoteIdLaunchResponses, PostQuotesByQuoteIdLaunchErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/quotes/{quoteId}/launch',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Get a price estimate for a research task
+ *
+ * Returns a price estimate for recruiting participants for a research task.
+ * Provide the task description, target panel, timeline in hours, and number of participants needed.
+ *
+ * **Self-serve limits** (industry standard for panel/research platforms):
+ * - `timelineHours`: 72–720 (min 3 days, max 1 month).
+ * - `submissionCount`: 1–999 participants.
+ * Requests outside these ranges return a validation error.
+ *
+ * **Larger studies:** For more than 999 participants or timelines beyond 1 month, contact sales or use enterprise options.
+ */
+export const postQuotes = <ThrowOnError extends boolean = false>(options: Options<PostQuotesData, ThrowOnError>): RequestResult<PostQuotesResponses, PostQuotesErrors, ThrowOnError> => (options.client ?? client).post<PostQuotesResponses, PostQuotesErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/quotes',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Launch opportunity
-     */
-    public postOpportunitiesByOpportunityIdLaunch<ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdLaunchData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdLaunchResponses, PostOpportunitiesByOpportunityIdLaunchErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostOpportunitiesByOpportunityIdLaunchResponses, PostOpportunitiesByOpportunityIdLaunchErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/launch',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Get quote details
+ *
+ * Returns the details of a specific feasibility quote, including pricing, timeline, and analysis.
+ */
+export const getQuotesByQuoteId = <ThrowOnError extends boolean = false>(options: Options<GetQuotesByQuoteIdData, ThrowOnError>): RequestResult<GetQuotesByQuoteIdResponses, GetQuotesByQuoteIdErrors, ThrowOnError> => (options.client ?? client).get<GetQuotesByQuoteIdResponses, GetQuotesByQuoteIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/quotes/{quoteId}',
+    ...options
+});
+
+/**
+ * List feasibility requests
+ *
+ * List your organization's feasibility requests, newest first. Optionally filter by status
+ * (RECEIVED / RESPONDED / WON / LOST / NOT_PURSUED) and page through results with limit and offset. Each
+ * request includes its costPerParticipant (the CPI), which is null until the request has been priced
+ * (status RESPONDED).
+ */
+export const getFeasibilityRequests = <ThrowOnError extends boolean = false>(options?: Options<GetFeasibilityRequestsData, ThrowOnError>): RequestResult<GetFeasibilityRequestsResponses, GetFeasibilityRequestsErrors, ThrowOnError> => (options?.client ?? client).get<GetFeasibilityRequestsResponses, GetFeasibilityRequestsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/feasibility/requests',
+    ...options
+});
+
+/**
+ * Submit a feasibility request
+ *
+ * Submit a feasibility request: can Terac source a panel for this task, and at what CPI (cost per participant).
+ *
+ * This is an async request-reply. The response comes back immediately with status RECEIVED and no CPI
+ * (costPerParticipant is null). Terac prices it out of band, either automatically within seconds or by
+ * routing it to a person, so poll GET /feasibility/requests/{requestId} rather than assuming a turnaround.
+ *
+ * Only what you send here is priced: taskDescription, panelDescription, and the count and timeline. The
+ * filters, screening questions and tasks on the opportunity you build later are not part of the brief that
+ * was priced, so a confirmed CPI applies to the scope described here and not to a materially different one.
+ *
+ * Once RESPONDED, create the opportunity with POST /opportunities and pass feasibility_request_id to price
+ * it from that confirmed CPI (Terac skips the autonomous estimate), then launch it. The request stays
+ * RESPONDED until that study launches, and is closed as won at launch rather than at create.
+ */
+export const postFeasibilityRequests = <ThrowOnError extends boolean = false>(options: Options<PostFeasibilityRequestsData, ThrowOnError>): RequestResult<PostFeasibilityRequestsResponses, PostFeasibilityRequestsErrors, ThrowOnError> => (options.client ?? client).post<PostFeasibilityRequestsResponses, PostFeasibilityRequestsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/feasibility/requests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Pause opportunity
-     */
-    public postOpportunitiesByOpportunityIdPause<ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdPauseData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdPauseResponses, PostOpportunitiesByOpportunityIdPauseErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostOpportunitiesByOpportunityIdPauseResponses, PostOpportunitiesByOpportunityIdPauseErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/pause',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Get a feasibility request
+ *
+ * Retrieve one of your feasibility requests by id. Use this to poll for the CPI after submitting.
+ *
+ * Status decides whether there is a price to read:
+ * - RECEIVED: not priced yet, costPerParticipant is null.
+ * - RESPONDED: priced. costPerParticipant is the confirmed all-in CPI per participant.
+ * - WON: already used by a study that launched.
+ * - LOST or NOT_PURSUED: closed without a usable price. Both are terminal, so stop polling. No reason is
+ * returned on this endpoint.
+ *
+ * Once RESPONDED, create the opportunity with POST /opportunities passing feasibility_request_id to price
+ * it from that confirmed CPI, then launch it.
+ */
+export const getFeasibilityRequestsByRequestId = <ThrowOnError extends boolean = false>(options: Options<GetFeasibilityRequestsByRequestIdData, ThrowOnError>): RequestResult<GetFeasibilityRequestsByRequestIdResponses, GetFeasibilityRequestsByRequestIdErrors, ThrowOnError> => (options.client ?? client).get<GetFeasibilityRequestsByRequestIdResponses, GetFeasibilityRequestsByRequestIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/feasibility/requests/{requestId}',
+    ...options
+});
+
+/**
+ * Get organization context
+ *
+ * Returns a markdown summary of the authenticated organization including identity, balance, projects, opportunity counts, and any organization-specific MCP instructions.
+ */
+export const getOrganizationsCurrentContext = <ThrowOnError extends boolean = false>(options?: Options<GetOrganizationsCurrentContextData, ThrowOnError>): RequestResult<GetOrganizationsCurrentContextResponses, GetOrganizationsCurrentContextErrors, ThrowOnError> => (options?.client ?? client).get<GetOrganizationsCurrentContextResponses, GetOrganizationsCurrentContextErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/organizations/current/context',
+    ...options
+});
+
+/**
+ * List subscribable webhook event types
+ *
+ * Read this rather than hardcoding a list: new event types are added without a breaking change, and appear here first.
+ */
+export const getHooksEventTypes = <ThrowOnError extends boolean = false>(options?: Options<GetHooksEventTypesData, ThrowOnError>): RequestResult<GetHooksEventTypesResponses, GetHooksEventTypesErrors, ThrowOnError> => (options?.client ?? client).get<GetHooksEventTypesResponses, GetHooksEventTypesErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/event-types',
+    ...options
+});
+
+/**
+ * List webhook subscriptions
+ */
+export const getHooksSubscriptions = <ThrowOnError extends boolean = false>(options?: Options<GetHooksSubscriptionsData, ThrowOnError>): RequestResult<GetHooksSubscriptionsResponses, GetHooksSubscriptionsErrors, ThrowOnError> => (options?.client ?? client).get<GetHooksSubscriptionsResponses, GetHooksSubscriptionsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions',
+    ...options
+});
+
+/**
+ * Create a webhook subscription
+ *
+ * Returns the signing secret alongside the subscription. Created unconfirmed, so it receives nothing until you call the confirm endpoint and Terac's ping to target_url returns 2xx.
+ */
+export const postHooksSubscriptions = <ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsData, ThrowOnError>): RequestResult<PostHooksSubscriptionsResponses, PostHooksSubscriptionsErrors, ThrowOnError> => (options.client ?? client).post<PostHooksSubscriptionsResponses, PostHooksSubscriptionsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Resume opportunity
-     */
-    public postOpportunitiesByOpportunityIdResume<ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdResumeData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdResumeResponses, PostOpportunitiesByOpportunityIdResumeErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostOpportunitiesByOpportunityIdResumeResponses, PostOpportunitiesByOpportunityIdResumeErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/resume',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Delete a webhook subscription
+ */
+export const deleteHooksSubscriptionsBySubscriptionId = <ThrowOnError extends boolean = false>(options: Options<DeleteHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<DeleteHooksSubscriptionsBySubscriptionIdResponses, DeleteHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> => (options.client ?? client).delete<DeleteHooksSubscriptionsBySubscriptionIdResponses, DeleteHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}',
+    ...options
+});
+
+/**
+ * Get a webhook subscription
+ */
+export const getHooksSubscriptionsBySubscriptionId = <ThrowOnError extends boolean = false>(options: Options<GetHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<GetHooksSubscriptionsBySubscriptionIdResponses, GetHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> => (options.client ?? client).get<GetHooksSubscriptionsBySubscriptionIdResponses, GetHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}',
+    ...options
+});
+
+/**
+ * Update a webhook subscription
+ *
+ * event_types replaces the current list rather than adding to it. Changing target_url clears the confirmation, since the new host has not accepted a ping yet. Set is_enabled true to recover a subscription Terac disabled after sustained failure.
+ */
+export const patchHooksSubscriptionsBySubscriptionId = <ThrowOnError extends boolean = false>(options: Options<PatchHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<PatchHooksSubscriptionsBySubscriptionIdResponses, PatchHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> => (options.client ?? client).patch<PatchHooksSubscriptionsBySubscriptionIdResponses, PatchHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * Stop opportunity
-     */
-    public postOpportunitiesByOpportunityIdStop<ThrowOnError extends boolean = false>(options: Options<PostOpportunitiesByOpportunityIdStopData, ThrowOnError>): RequestResult<PostOpportunitiesByOpportunityIdStopResponses, PostOpportunitiesByOpportunityIdStopErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostOpportunitiesByOpportunityIdStopResponses, PostOpportunitiesByOpportunityIdStopErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/stop',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
+});
+
+/**
+ * Confirm a webhook subscription
+ *
+ * Terac POSTs one signed webhook.ping to target_url. Answer 2xx and the subscription starts receiving events. This is also the way to test a receiver end to end, since it exercises the real signature headers.
+ */
+export const postHooksSubscriptionsBySubscriptionId = <ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<PostHooksSubscriptionsBySubscriptionIdResponses, PostHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> => (options.client ?? client).post<PostHooksSubscriptionsBySubscriptionIdResponses, PostHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List submissions for an opportunity
-     */
-    public getOpportunitiesByOpportunityIdSubmissions<ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdSubmissionsData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdSubmissionsResponses, GetOpportunitiesByOpportunityIdSubmissionsErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetOpportunitiesByOpportunityIdSubmissionsResponses, GetOpportunitiesByOpportunityIdSubmissionsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/submissions',
-            ...options
-        });
+});
+
+/**
+ * Read a subscription's signing secret
+ *
+ * For recovering a secret you no longer have. Rotate instead if you believe it leaked, since reading it does not invalidate anything.
+ */
+export const getHooksSubscriptionsBySubscriptionIdSecret = <ThrowOnError extends boolean = false>(options: Options<GetHooksSubscriptionsBySubscriptionIdSecretData, ThrowOnError>): RequestResult<GetHooksSubscriptionsBySubscriptionIdSecretResponses, GetHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError> => (options.client ?? client).get<GetHooksSubscriptionsBySubscriptionIdSecretResponses, GetHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}/secret',
+    ...options
+});
+
+/**
+ * Rotate a subscription's signing secret
+ *
+ * Takes effect immediately and with no overlap window: the next attempt of every delivery, including one already queued, is signed with the new secret. Deploy it to your receiver first.
+ */
+export const postHooksSubscriptionsBySubscriptionIdSecret = <ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsBySubscriptionIdSecretData, ThrowOnError>): RequestResult<PostHooksSubscriptionsBySubscriptionIdSecretResponses, PostHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError> => (options.client ?? client).post<PostHooksSubscriptionsBySubscriptionIdSecretResponses, PostHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/subscriptions/{subscriptionId}/secret',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
-    
-    /**
-     * List applicants awaiting your invite decision
-     *
-     * Applicants who passed screening and are waiting on your decision to invite them.
-     *
-     * They are deliberately absent from `GET /opportunities/{opportunityId}/submissions`: an applicant
-     * here has not been invited yet, so they hold no submission status, and `GET /submissions/{id}`
-     * returns 404 for them. This collection is where they exist until you decide.
-     *
-     * Act on one with `POST /submissions/{submissionId}/invite` or `/decline`. Inviting makes them
-     * `screen_passed` and starts their tasks; declining makes them `screened_out`. Either way they
-     * leave this collection and appear in the submissions listing from then on.
-     *
-     * An opportunity on `manual_review` routes every qualified applicant here. One on `auto_invite`
-     * still routes an individual applicant here when a screening answer you marked `review` flags
-     * them, so poll this even when you did not opt into reviewing everyone.
-     */
-    public getOpportunitiesByOpportunityIdApplicants<ThrowOnError extends boolean = false>(options: Options<GetOpportunitiesByOpportunityIdApplicantsData, ThrowOnError>): RequestResult<GetOpportunitiesByOpportunityIdApplicantsResponses, GetOpportunitiesByOpportunityIdApplicantsErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetOpportunitiesByOpportunityIdApplicantsResponses, GetOpportunitiesByOpportunityIdApplicantsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/opportunities/{opportunityId}/applicants',
-            ...options
-        });
-    }
-    
-    /**
-     * Invite an applicant awaiting your decision
-     *
-     * Invites an applicant sitting in your applicant-review queue, which materializes their tasks and notifies them. The submission becomes `screen_passed`. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
-     */
-    public postSubmissionsBySubmissionIdInvite<ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdInviteData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdInviteResponses, PostSubmissionsBySubmissionIdInviteErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostSubmissionsBySubmissionIdInviteResponses, PostSubmissionsBySubmissionIdInviteErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/submissions/{submissionId}/invite',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Decline an applicant awaiting your decision
-     *
-     * Declines an applicant sitting in your applicant-review queue. The submission becomes `screened_out` and they are not invited. Returns 409 if the applicant is not awaiting your decision, which includes one you have already decided on.
-     */
-    public postSubmissionsBySubmissionIdDecline<ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdDeclineData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdDeclineResponses, PostSubmissionsBySubmissionIdDeclineErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostSubmissionsBySubmissionIdDeclineResponses, PostSubmissionsBySubmissionIdDeclineErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/submissions/{submissionId}/decline',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Get submission details
-     */
-    public getSubmissionsBySubmissionId<ThrowOnError extends boolean = false>(options: Options<GetSubmissionsBySubmissionIdData, ThrowOnError>): RequestResult<GetSubmissionsBySubmissionIdResponses, GetSubmissionsBySubmissionIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetSubmissionsBySubmissionIdResponses, GetSubmissionsBySubmissionIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/submissions/{submissionId}',
-            ...options
-        });
-    }
-    
-    /**
-     * Approve a submission
-     */
-    public postSubmissionsBySubmissionIdApprove<ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdApproveData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdApproveResponses, PostSubmissionsBySubmissionIdApproveErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostSubmissionsBySubmissionIdApproveResponses, PostSubmissionsBySubmissionIdApproveErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/submissions/{submissionId}/approve',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Reject a submission
-     */
-    public postSubmissionsBySubmissionIdReject<ThrowOnError extends boolean = false>(options: Options<PostSubmissionsBySubmissionIdRejectData, ThrowOnError>): RequestResult<PostSubmissionsBySubmissionIdRejectResponses, PostSubmissionsBySubmissionIdRejectErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostSubmissionsBySubmissionIdRejectResponses, PostSubmissionsBySubmissionIdRejectErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/submissions/{submissionId}/reject',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Get a price estimate for a research task
-     *
-     * Returns a price estimate for recruiting participants for a research task.
-     * Provide the task description, target panel, timeline in hours, and number of participants needed.
-     *
-     * **Self-serve limits** (industry standard for panel/research platforms):
-     * - `timelineHours`: 72–720 (min 3 days, max 1 month).
-     * - `submissionCount`: 1–999 participants.
-     * Requests outside these ranges return a validation error.
-     *
-     * **Larger studies:** For more than 999 participants or timelines beyond 1 month, contact sales or use enterprise options.
-     */
-    public postQuotes<ThrowOnError extends boolean = false>(options: Options<PostQuotesData, ThrowOnError>): RequestResult<PostQuotesResponses, PostQuotesErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostQuotesResponses, PostQuotesErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/quotes',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Get quote details
-     *
-     * Returns the details of a specific feasibility quote, including pricing, timeline, and analysis.
-     */
-    public getQuotesByQuoteId<ThrowOnError extends boolean = false>(options: Options<GetQuotesByQuoteIdData, ThrowOnError>): RequestResult<GetQuotesByQuoteIdResponses, GetQuotesByQuoteIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetQuotesByQuoteIdResponses, GetQuotesByQuoteIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/quotes/{quoteId}',
-            ...options
-        });
-    }
-    
-    /**
-     * List feasibility requests
-     *
-     * List your organization's feasibility requests, newest first. Optionally filter by status
-     * (RECEIVED / RESPONDED / WON / LOST / NOT_PURSUED) and page through results with limit and offset. Each
-     * request includes its costPerParticipant (the CPI), which is null until the request has been priced
-     * (status RESPONDED).
-     */
-    public getFeasibilityRequests<ThrowOnError extends boolean = false>(options?: Options<GetFeasibilityRequestsData, ThrowOnError>): RequestResult<GetFeasibilityRequestsResponses, GetFeasibilityRequestsErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetFeasibilityRequestsResponses, GetFeasibilityRequestsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/feasibility/requests',
-            ...options
-        });
-    }
-    
-    /**
-     * Submit a feasibility request
-     *
-     * Submit a feasibility request: can Terac source a panel for this task, and at what CPI (cost per participant).
-     *
-     * This is an async request-reply. The response comes back immediately with status RECEIVED and no CPI
-     * (costPerParticipant is null). Terac prices it out of band, either automatically within seconds or by
-     * routing it to a person, so poll GET /feasibility/requests/{requestId} rather than assuming a turnaround.
-     *
-     * Only what you send here is priced: taskDescription, panelDescription, and the count and timeline. The
-     * filters, screening questions and tasks on the opportunity you build later are not part of the brief that
-     * was priced, so a confirmed CPI applies to the scope described here and not to a materially different one.
-     *
-     * Once RESPONDED, create the opportunity with POST /opportunities and pass feasibility_request_id to price
-     * it from that confirmed CPI (Terac skips the autonomous estimate), then launch it. The request stays
-     * RESPONDED until that study launches, and is closed as won at launch rather than at create.
-     */
-    public postFeasibilityRequests<ThrowOnError extends boolean = false>(options: Options<PostFeasibilityRequestsData, ThrowOnError>): RequestResult<PostFeasibilityRequestsResponses, PostFeasibilityRequestsErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostFeasibilityRequestsResponses, PostFeasibilityRequestsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/feasibility/requests',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Get a feasibility request
-     *
-     * Retrieve one of your feasibility requests by id. Use this to poll for the CPI after submitting.
-     *
-     * Status decides whether there is a price to read:
-     * - RECEIVED: not priced yet, costPerParticipant is null.
-     * - RESPONDED: priced. costPerParticipant is the confirmed all-in CPI per participant.
-     * - WON: already used by a study that launched.
-     * - LOST or NOT_PURSUED: closed without a usable price. Both are terminal, so stop polling. No reason is
-     * returned on this endpoint.
-     *
-     * Once RESPONDED, create the opportunity with POST /opportunities passing feasibility_request_id to price
-     * it from that confirmed CPI, then launch it.
-     */
-    public getFeasibilityRequestsByRequestId<ThrowOnError extends boolean = false>(options: Options<GetFeasibilityRequestsByRequestIdData, ThrowOnError>): RequestResult<GetFeasibilityRequestsByRequestIdResponses, GetFeasibilityRequestsByRequestIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetFeasibilityRequestsByRequestIdResponses, GetFeasibilityRequestsByRequestIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/feasibility/requests/{requestId}',
-            ...options
-        });
-    }
-    
-    /**
-     * Get organization context
-     *
-     * Returns a markdown summary of the authenticated organization including identity, balance, projects, opportunity counts, and any organization-specific MCP instructions.
-     */
-    public getOrganizationsCurrentContext<ThrowOnError extends boolean = false>(options?: Options<GetOrganizationsCurrentContextData, ThrowOnError>): RequestResult<GetOrganizationsCurrentContextResponses, GetOrganizationsCurrentContextErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetOrganizationsCurrentContextResponses, GetOrganizationsCurrentContextErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/organizations/current/context',
-            ...options
-        });
-    }
-    
-    /**
-     * List subscribable webhook event types
-     *
-     * Read this rather than hardcoding a list: new event types are added without a breaking change, and appear here first.
-     */
-    public getHooksEventTypes<ThrowOnError extends boolean = false>(options?: Options<GetHooksEventTypesData, ThrowOnError>): RequestResult<GetHooksEventTypesResponses, GetHooksEventTypesErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetHooksEventTypesResponses, GetHooksEventTypesErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/event-types',
-            ...options
-        });
-    }
-    
-    /**
-     * List webhook subscriptions
-     */
-    public getHooksSubscriptions<ThrowOnError extends boolean = false>(options?: Options<GetHooksSubscriptionsData, ThrowOnError>): RequestResult<GetHooksSubscriptionsResponses, GetHooksSubscriptionsErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetHooksSubscriptionsResponses, GetHooksSubscriptionsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions',
-            ...options
-        });
-    }
-    
-    /**
-     * Create a webhook subscription
-     *
-     * Returns the signing secret alongside the subscription. Created unconfirmed, so it receives nothing until you call the confirm endpoint and Terac's ping to target_url returns 2xx.
-     */
-    public postHooksSubscriptions<ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsData, ThrowOnError>): RequestResult<PostHooksSubscriptionsResponses, PostHooksSubscriptionsErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostHooksSubscriptionsResponses, PostHooksSubscriptionsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Delete a webhook subscription
-     */
-    public deleteHooksSubscriptionsBySubscriptionId<ThrowOnError extends boolean = false>(options: Options<DeleteHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<DeleteHooksSubscriptionsBySubscriptionIdResponses, DeleteHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).delete<DeleteHooksSubscriptionsBySubscriptionIdResponses, DeleteHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}',
-            ...options
-        });
-    }
-    
-    /**
-     * Get a webhook subscription
-     */
-    public getHooksSubscriptionsBySubscriptionId<ThrowOnError extends boolean = false>(options: Options<GetHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<GetHooksSubscriptionsBySubscriptionIdResponses, GetHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetHooksSubscriptionsBySubscriptionIdResponses, GetHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}',
-            ...options
-        });
-    }
-    
-    /**
-     * Update a webhook subscription
-     *
-     * event_types replaces the current list rather than adding to it. Changing target_url clears the confirmation, since the new host has not accepted a ping yet. Set is_enabled true to recover a subscription Terac disabled after sustained failure.
-     */
-    public patchHooksSubscriptionsBySubscriptionId<ThrowOnError extends boolean = false>(options: Options<PatchHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<PatchHooksSubscriptionsBySubscriptionIdResponses, PatchHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).patch<PatchHooksSubscriptionsBySubscriptionIdResponses, PatchHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Confirm a webhook subscription
-     *
-     * Terac POSTs one signed webhook.ping to target_url. Answer 2xx and the subscription starts receiving events. This is also the way to test a receiver end to end, since it exercises the real signature headers.
-     */
-    public postHooksSubscriptionsBySubscriptionId<ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsBySubscriptionIdData, ThrowOnError>): RequestResult<PostHooksSubscriptionsBySubscriptionIdResponses, PostHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostHooksSubscriptionsBySubscriptionIdResponses, PostHooksSubscriptionsBySubscriptionIdErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * Read a subscription's signing secret
-     *
-     * For recovering a secret you no longer have. Rotate instead if you believe it leaked, since reading it does not invalidate anything.
-     */
-    public getHooksSubscriptionsBySubscriptionIdSecret<ThrowOnError extends boolean = false>(options: Options<GetHooksSubscriptionsBySubscriptionIdSecretData, ThrowOnError>): RequestResult<GetHooksSubscriptionsBySubscriptionIdSecretResponses, GetHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError> {
-        return (options.client ?? this.client).get<GetHooksSubscriptionsBySubscriptionIdSecretResponses, GetHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}/secret',
-            ...options
-        });
-    }
-    
-    /**
-     * Rotate a subscription's signing secret
-     *
-     * Takes effect immediately and with no overlap window: the next attempt of every delivery, including one already queued, is signed with the new secret. Deploy it to your receiver first.
-     */
-    public postHooksSubscriptionsBySubscriptionIdSecret<ThrowOnError extends boolean = false>(options: Options<PostHooksSubscriptionsBySubscriptionIdSecretData, ThrowOnError>): RequestResult<PostHooksSubscriptionsBySubscriptionIdSecretResponses, PostHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError> {
-        return (options.client ?? this.client).post<PostHooksSubscriptionsBySubscriptionIdSecretResponses, PostHooksSubscriptionsBySubscriptionIdSecretErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/subscriptions/{subscriptionId}/secret',
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            }
-        });
-    }
-    
-    /**
-     * List webhook deliveries
-     *
-     * One row per delivery, updated in place across retries, so id is the X-Event-ID your endpoint saw and attempt_count is how many tries it took. Confirmation pings are not logged here.
-     */
-    public getHooksEvents<ThrowOnError extends boolean = false>(options?: Options<GetHooksEventsData, ThrowOnError>): RequestResult<GetHooksEventsResponses, GetHooksEventsErrors, ThrowOnError> {
-        return (options?.client ?? this.client).get<GetHooksEventsResponses, GetHooksEventsErrors, ThrowOnError>({
-            security: [{ name: 'Authorization', type: 'apiKey' }],
-            url: '/hooks/events',
-            ...options
-        });
-    }
-}
+});
+
+/**
+ * List webhook deliveries
+ *
+ * One row per delivery, updated in place across retries, so id is the X-Event-ID your endpoint saw and attempt_count is how many tries it took. Confirmation pings are not logged here.
+ */
+export const getHooksEvents = <ThrowOnError extends boolean = false>(options?: Options<GetHooksEventsData, ThrowOnError>): RequestResult<GetHooksEventsResponses, GetHooksEventsErrors, ThrowOnError> => (options?.client ?? client).get<GetHooksEventsResponses, GetHooksEventsErrors, ThrowOnError>({
+    security: [{ name: 'Authorization', type: 'apiKey' }],
+    url: '/hooks/events',
+    ...options
+});

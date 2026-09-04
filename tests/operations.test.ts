@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import { GeneratedTeracSdk } from '../src/generated/sdk.gen'
+import * as generatedOperations from '../src/generated/sdk.gen'
 import { TeracSdk } from '../src/index'
 import type { TeracRequestOptions } from '../src/index'
 import { json, startServer } from './helpers/server'
@@ -493,9 +493,7 @@ const cases: OperationCase[] = [
   },
 ]
 
-const generatedOperationNames = Object.getOwnPropertyNames(
-  GeneratedTeracSdk.prototype,
-).filter((name) => name !== 'constructor')
+const generatedOperationNames = Object.keys(generatedOperations)
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
@@ -529,7 +527,7 @@ describe('generated operation coverage', () => {
 
     const issued = new Map<string, string>()
     const pattern =
-      /public (\w+)<ThrowOnError[\s\S]*?\.(get|post|patch|put|delete)<[\s\S]*?url: '([^']+)'/g
+      /export const (\w+) = <ThrowOnError[\s\S]*?\.(get|post|patch|put|delete)<[\s\S]*?url: '([^']+)'/g
     for (const match of source.matchAll(pattern)) {
       const [, name, method, url] = match
       if (name !== undefined && method !== undefined && url !== undefined) {

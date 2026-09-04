@@ -131,6 +131,35 @@ const asAbsoluteUrl = (source: string): URL | undefined => {
 }
 
 /**
+ * A host that cannot exist, for resolving a relative URL. `.invalid` is
+ * reserved for exactly this. Nothing is ever requested from it.
+ */
+const RELATIVE_URL_BASE = 'https://placeholder.invalid'
+
+/**
+ * `new URL` for a relative request URL.
+ *
+ * `/session?teracSubmissionId=sub_1#done` is the normal shape of Node's
+ * `IncomingMessage.url`, and `new URL` rejects it without a base. Resolving it
+ * against a placeholder origin parses the query and the fragment the same way
+ * an absolute URL does.
+ *
+ * A bare `key=value` string is deliberately excluded: it is a query string, not
+ * a relative URL, and resolving it would make it a PATH and lose every
+ * parameter.
+ */
+const asRelativeUrl = (source: string): URL | undefined => {
+  if (!source.startsWith('/') && !source.startsWith('?')) {
+    return undefined
+  }
+  try {
+    return new URL(source, RELATIVE_URL_BASE)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * The query of a bare query string, with a leading `?` and any fragment
  * removed. `#` cannot legally appear unescaped inside a query, so everything
  * from the first one is a fragment rather than part of a parameter value.
@@ -153,13 +182,12 @@ const readParam = (
   } else if (source instanceof URL) {
     params = source.searchParams
   } else if (typeof source === 'string') {
-    // An absolute URL is parsed as a URL, so its fragment stays out of the
-    // query. Slicing at the first `?` instead would read
-    // `…?teracSubmissionId=sub_1#done` as the id `sub_1#done`.
-    const absolute = asAbsoluteUrl(source)
-    params = absolute
-      ? absolute.searchParams
-      : new URLSearchParams(asBareQuery(source))
+    // A URL, absolute or relative, is parsed as a URL, so its fragment stays
+    // out of the query. Slicing at the first `?` instead would read
+    // `…?teracSubmissionId=sub_1#done` as the id `sub_1#done`. Only a bare
+    // query string, which is not a URL at all, is read as one.
+    const url = asAbsoluteUrl(source) ?? asRelativeUrl(source)
+    params = url ? url.searchParams : new URLSearchParams(asBareQuery(source))
   } else {
     const value = source[name]
     if (Array.isArray(value)) {

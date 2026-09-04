@@ -45,11 +45,14 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
 - `pnpm run tc` — type-check without emitting.
 - `pnpm run lint` — ESLint across the repository.
 - `pnpm run test` — Vitest.
+- `pnpm run test:dist` — `node --test` against the built bundles in `dist/`.
+  Runs on Node 18 in CI, so it uses nothing but `node:test`, `node:assert`
+  and `zod`. Build first.
 - `pnpm run format` / `pnpm run format:write` — Prettier check / fix.
 - `pnpm run build` — dual ESM/CJS bundles in `dist/` via tsdown.
 - `pnpm run check` — schema validation, `generate:check`, type-check, lint,
-  format check, build and tests, in that order. `build` runs before `test`
-  because the package smoke tests load `dist/`.
+  format check, build, tests and the dist smoke tests, in that order. `build`
+  runs before the tests because both suites load `dist/`.
 
 ---
 
@@ -125,7 +128,16 @@ than the runtime floor in shipped code. Do not use `import.meta.dirname` in
   a comment explaining why.
 - Credentials belong in ECMAScript `#private` fields, never in a TypeScript
   `private` or `protected` one — the latter is enumerable at runtime.
+- The `@hey-api/sdk` plugin stays on `strategy: 'flat'`. The class strategies
+  emit a public static `__registry` of every instance ever constructed, and each
+  instance holds its configured client, so reading `client.getConfig().auth` off
+  a registered instance hands any caller the API key. Flat functions take the
+  client as an argument, so the configured one never leaves a `#private` field.
 - Errors expose a redacted request summary, never a `Request` or a `Response`.
+  The status text and the allow-listed response header values go through
+  `redactApiKey`; the payload is round-tripped through JSON with the key
+  replaced in the serialized text, and `message`, `code` and `details` are read
+  back out of that scrubbed payload. `cause` is attached as it was thrown.
 - Prefix unused parameters with `_`.
 - Prettier formatting: no semicolons, single quotes, trailing commas.
 - Never hand-edit `src/generated/**`; change the generator config or the

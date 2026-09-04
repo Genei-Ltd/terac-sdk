@@ -212,6 +212,69 @@ describe('response header redaction', () => {
   })
 })
 
+describe('the API key is scrubbed from server-controlled text', () => {
+  // An allow-list keeps unanticipated header NAMES from carrying a value, but
+  // the values on the list are still written by the server, as are the payload
+  // and everything read out of it.
+
+  test('an allow-listed identifier header that echoes the credential', async () => {
+    const server = await startServer((request, response) => {
+      json(
+        response,
+        500,
+        { error: { code: 'INTERNAL_SERVER_ERROR', message: 'boom' } },
+        {
+          // `x-request-id` is on the allow-list, so its value survives
+          // redaction. A gateway that builds the id out of the inbound request
+          // puts the credential straight into it.
+          'x-request-id': `req_${String(request.headers.authorization)}`,
+        },
+      )
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const error = await terac.projects.list().catch((thrown: unknown) => thrown)
+    if (!(error instanceof TeracApiError)) {
+      throw new Error('expected a TeracApiError')
+    }
+
+    expect(error.responseHeaders['x-request-id']).toBe('req_[redacted]')
+    expect(JSON.stringify(error)).not.toContain(API_KEY)
+    expect(inspect(error, { depth: null })).not.toContain(API_KEY)
+
+    await server.close()
+  })
+
+  test('an error message and details that echo the credential', async () => {
+    const server = await startServer((request, response) => {
+      json(response, 400, {
+        error: {
+          code: 'BAD_REQUEST',
+          message: `Unrecognised credential ${String(request.headers.authorization)}`,
+          details: [{ field: 'authorization', message: `saw ${API_KEY}` }],
+        },
+      })
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const error = await terac.projects.list().catch((thrown: unknown) => thrown)
+    if (!(error instanceof TeracApiError)) {
+      throw new Error('expected a TeracApiError')
+    }
+
+    // The whole `Bearer <key>` goes as one unit; a bare key goes on its own.
+    expect(error.message).toBe('Unrecognised credential [redacted]')
+    expect(error.details?.[0]?.message).toBe('saw [redacted]')
+
+    expect(JSON.stringify(error.payload)).not.toContain(API_KEY)
+    expect(JSON.stringify(error)).not.toContain(API_KEY)
+    expect(inspect(error, { depth: null })).not.toContain(API_KEY)
+    expect(String(error.stack)).not.toContain(API_KEY)
+
+    await server.close()
+  })
+})
+
 describe('response decoding does not follow Content-Type', () => {
   // The client is pinned to `parseAs: 'json'`. On `auto` it picks a decoder
   // from the header, so JSON labelled `text/plain` would be handed back as a

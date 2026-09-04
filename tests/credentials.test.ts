@@ -1,5 +1,6 @@
 import { inspect } from 'node:util'
 import { describe, expect, test } from 'vitest'
+import * as rootExports from '../src/index'
 import {
   TeracApiError,
   TeracSdk,
@@ -217,5 +218,53 @@ describe('credential containment', () => {
     const error = await terac.projects.list().catch((thrown: unknown) => thrown)
     expect(error).toBeInstanceOf(TeracTransportError)
     expect(inspect(error, { depth: null })).not.toContain(API_KEY)
+  })
+})
+
+/**
+ * The generated SDK used to be a class holding a public static `__registry` of
+ * every instance ever constructed. Each instance held its configured client, so
+ * `GeneratedTeracSdk.__registry.get().client.getConfig().auth({})` handed any
+ * caller `Bearer <key>`. The generator now emits plain functions that take the
+ * client as an argument, so there is no class and no registry.
+ */
+describe('the exported surface cannot reach the API key', () => {
+  const PROBE = 'tk_LEAK_PROBE'
+
+  test('the SDK renders without the key', () => {
+    const sdk = new TeracSdk({ apiKey: PROBE })
+
+    expect(inspect(sdk, { showHidden: true, depth: 10 })).not.toContain(PROBE)
+    expect(JSON.stringify(sdk)).not.toContain(PROBE)
+  })
+
+  test('an API error that echoes the key back renders without it', async () => {
+    const server = await startServer((request, response) => {
+      // The key reflected into all three places a server controls: an
+      // allow-listed response header, the error message, and the status line.
+      const authorization = String(request.headers.authorization)
+      const body = JSON.stringify({
+        error: { code: 'BAD_REQUEST', message: `unknown key ${authorization}` },
+      })
+      response.writeHead(400, `Bad Request for ${authorization}`, {
+        'content-type': 'application/json',
+        'content-length': String(Buffer.byteLength(body)),
+        'x-request-id': `req_${authorization}`,
+      })
+      response.end(body)
+    })
+    const terac = new TeracSdk({ apiKey: PROBE, baseUrl: server.origin })
+
+    const error = await terac.projects.list().catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(TeracApiError)
+    expect(inspect(error, { depth: 10 })).not.toContain(PROBE)
+    expect(JSON.stringify(error)).not.toContain(PROBE)
+
+    await server.close()
+  })
+
+  test('nothing exported is the old class, and nothing is a registry', () => {
+    expect(rootExports).not.toHaveProperty('GeneratedTeracSdk')
+    expect(Object.keys(rootExports)).not.toContain('__registry')
   })
 })

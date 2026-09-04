@@ -79,7 +79,7 @@
   },
   "scripts": {
     "build": "tsdown --config tsdown.config.ts",
-    "check": "pnpm run schema:validate && pnpm run generate:check && pnpm run tc && pnpm run lint && pnpm run format && pnpm run build && pnpm run test run",
+    "check": "pnpm run schema:validate && pnpm run generate:check && pnpm run tc && pnpm run lint && pnpm run format && pnpm run build && pnpm run test run && pnpm run test:dist",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "generate": "bash ./scripts/generate.sh",
@@ -90,7 +90,8 @@
     "schema:update": "tsx ./scripts/update-schema.ts",
     "schema:validate": "tsx ./scripts/validate-openapi.ts schemas/openapi.json",
     "tc": "tsc -p tsconfig.json --pretty --noEmit",
-    "test": "vitest"
+    "test": "vitest",
+    "test:dist": "node --test tests/dist-smoke.mjs"
   },
   "dependencies": {
     "zod": "^3.25.0 || ^4.0.0"

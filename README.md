@@ -120,6 +120,13 @@ is the only server the document declares and the only one the docs name.
   rate-limit headers, `content-type` and request-id headers. A proxy that
   echoes your credential back in a header of its own invention cannot put it in
   your logs.
+- **The text the server wrote is scrubbed of the key.** The header values that
+  survive the allow-list, the status text and the decoded body all have the
+  key, and the whole `Bearer <key>` string, replaced with `[redacted]`.
+  `error.message`, `error.code` and `error.details` are read out of that
+  scrubbed body, so a gateway that reflects your `Authorization` header into
+  `X-Request-Id` or into an error message cannot put it on the error either.
+  `error.cause` is the error that was thrown, kept as it was.
 
 ## Error handling
 
@@ -210,6 +217,10 @@ actually carries one — it is never invented.
 `timeoutMs` covers **reading the response body**, not just the response
 headers. A server that sends headers and then stalls the body still trips the
 deadline; without that, the SDK promise would hang forever.
+
+It must be a positive number of at most `2_147_483_647` (about 24.8 days), and
+the constructor throws otherwise. `setTimeout` wraps a longer delay round to
+1ms, so a very long deadline would abort every request almost immediately.
 
 Every operation takes an optional trailing `{ signal }`, forwarded to the
 request. `signal.reason` is preserved by identity, so `AbortSignal.timeout(n)`
@@ -358,10 +369,15 @@ Three details that decide whether the verification is worth anything:
   `event_id`, that is the value you get back, and a header that disagrees fails
   verification — otherwise a captured delivery could be replayed under a fresh
   header id and walk straight past deduplication. The header is used only when
-  the body omits it.
+  the body **omits** `event_id` entirely; a body that has the property but not
+  a non-empty string in it is rejected as `malformed_payload`, rather than
+  handing the decision back to the unsigned header.
 - **A `Uint8Array` payload is hashed byte for byte.** The bytes are never
   decoded before the HMAC, so an invalid UTF-8 sequence is not quietly replaced
-  with U+FFFD. Decoding happens after verification, for the JSON parse.
+  with U+FFFD. Decoding happens after verification, with fatal UTF-8
+  validation: a body that is not valid UTF-8 is rejected as `malformed_payload`
+  instead of being silently repaired, so the `rawBody` you get back re-encodes
+  to exactly the bytes the signature covered.
 
 ### A verification failure is not a replay defence
 
@@ -494,6 +510,11 @@ Terac appends `teracSubmissionId`, `submissionId` (the same value) and `taskId`
 to the `task_url` you configured. To place an id elsewhere in your link, write
 `{TERAC_SUBMISSION_ID}` or `{TERAC_TASK_ID}` where the value belongs.
 
+`parseTeracTaskUrlParams` takes an absolute URL, a relative request URL such as
+the `/session?teracSubmissionId=sub_1` Node puts in `IncomingMessage.url`, a
+bare query string, a `URL`, a `URLSearchParams`, or a parsed query object. A
+fragment is never read as part of a parameter value.
+
 ```ts
 import {
   buildTeracCompletionCallbackUrl,
@@ -585,14 +606,16 @@ console.log(`${checked.data.id} is ${checked.data.status}`)
 
 ## Generated client access
 
-The generated client and its types are re-exported from the root entry point
-for the rare case where the facade is in the way. The facade covers every
+The generated operations and their types are re-exported from the root entry
+point for the rare case where the facade is in the way. Each one is a plain
+function that takes the client you configured; there is no generated class, and
+so nothing that keeps a registry of configured clients. The facade covers every
 operation, sets `redirect: 'error'`, enforces the body-inclusive timeout, pins
-JSON decoding and classifies errors. The generated client does none of that, so
-prefer `TeracSdk`.
+JSON decoding and classifies errors. The generated operations do none of that,
+so prefer `TeracSdk`.
 
 ```ts
-import { GeneratedTeracSdk, generated } from '@coloop-ai/terac-sdk'
+import { generated, getProjects } from '@coloop-ai/terac-sdk'
 
 const apiKey = process.env.TERAC_API_KEY
 if (!apiKey) {
@@ -601,7 +624,7 @@ if (!apiKey) {
 
 // `TeracSdk` is the supported surface. It refuses redirects, applies a deadline
 // that covers the response body, pins JSON decoding and classifies errors. The
-// generated client does none of that, so anything you still want you have to
+// generated operations do none of that, so anything you still want you have to
 // configure yourself.
 const client = generated.createClient({
   baseUrl: 'https://terac.com/api/external/v2',
@@ -611,8 +634,9 @@ const client = generated.createClient({
   throwOnError: true,
 })
 
-const sdk = new GeneratedTeracSdk({ client })
-const { data } = await sdk.getProjects<true>({ query: { limit: 10 } })
+// Every generated operation is a plain function that takes its client. Nothing
+// holds a reference to `client` except the code that passes it.
+const { data } = await getProjects<true>({ client, query: { limit: 10 } })
 
 console.log(`${String(data.data.length)} projects`)
 ```
@@ -653,7 +677,7 @@ to delete the workaround.
 | Script            | What it does                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build`           | Dual ESM/CJS bundles plus types in `dist/` via tsdown.                                                                                                   |
-| `check`           | Schema validation, `generate:check`, type-check, lint, format check, build, tests — in that order.                                                       |
+| `check`           | Schema validation, `generate:check`, type-check, lint, format check, build, tests, dist smoke tests — in that order.                                     |
 | `format`          | Prettier check.                                                                                                                                          |
 | `format:write`    | Prettier write.                                                                                                                                          |
 | `generate`        | Regenerates `src/generated/**` from the **committed** `schemas/openapi.json`. Never touches the network.                                                 |
@@ -665,6 +689,7 @@ to delete the workaround.
 | `schema:validate` | Validates the committed document.                                                                                                                        |
 | `tc`              | `tsc --noEmit`.                                                                                                                                          |
 | `test`            | Vitest.                                                                                                                                                  |
+| `test:dist`       | `node --test` against the built bundles in `dist/`, with `zod` as the only dependency. Build first.                                                      |
 
 Development needs **Node 22.18 or newer** (`@hey-api/openapi-ts` requires it,
 and ESLint and Vitest need Node 20+); see `.node-version`. The published package

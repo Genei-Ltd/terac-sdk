@@ -1,5 +1,45 @@
-import { createClient } from './generated/client'
-import { GeneratedTeracSdk } from './generated/sdk.gen'
+import { type Client, createClient } from './generated/client'
+import {
+  deleteHooksSubscriptionsBySubscriptionId,
+  deleteOpportunitiesByOpportunityId,
+  getFeasibilityRequests,
+  getFeasibilityRequestsByRequestId,
+  getFilters,
+  getFiltersByFilterSlugOptions,
+  getHooksEventTypes,
+  getHooksEvents,
+  getHooksSubscriptions,
+  getHooksSubscriptionsBySubscriptionId,
+  getHooksSubscriptionsBySubscriptionIdSecret,
+  getOpportunities,
+  getOpportunitiesByOpportunityId,
+  getOpportunitiesByOpportunityIdApplicants,
+  getOpportunitiesByOpportunityIdSubmissions,
+  getOrganizationsCurrentContext,
+  getProjects,
+  getProjectsByProjectId,
+  getQuotesByQuoteId,
+  getSubmissionsBySubmissionId,
+  patchHooksSubscriptionsBySubscriptionId,
+  patchOpportunitiesByOpportunityId,
+  patchProjectsByProjectId,
+  postFeasibilityRequests,
+  postHooksSubscriptions,
+  postHooksSubscriptionsBySubscriptionId,
+  postHooksSubscriptionsBySubscriptionIdSecret,
+  postOpportunities,
+  postOpportunitiesByOpportunityIdLaunch,
+  postOpportunitiesByOpportunityIdPause,
+  postOpportunitiesByOpportunityIdResume,
+  postOpportunitiesByOpportunityIdStop,
+  postProjects,
+  postQuotes,
+  postQuotesByQuoteIdLaunch,
+  postSubmissionsBySubmissionIdApprove,
+  postSubmissionsBySubmissionIdDecline,
+  postSubmissionsBySubmissionIdInvite,
+  postSubmissionsBySubmissionIdReject,
+} from './generated/sdk.gen'
 import type {
   DeleteHooksSubscriptionsBySubscriptionIdResponse,
   DeleteOpportunitiesByOpportunityIdResponse,
@@ -67,6 +107,8 @@ import {
   TeracResponseError,
   TeracTransportError,
   isTeracError,
+  redactApiKey,
+  redactPayload,
   summarizeRequest,
   summarizeResponseHeaders,
 } from './errors'
@@ -82,6 +124,13 @@ export const TERAC_BASE_URL = 'https://terac.com/api/external/v2'
 
 /** An empty JSON body, which Terac requires on every `POST`. */
 const EMPTY_BODY: Record<string, never> = {}
+
+/**
+ * The largest delay `setTimeout` honours. A delay above this wraps to 1ms in
+ * Node and in browsers, so a caller asking for a very long deadline would get
+ * a request aborted almost at once. Rejected at construction instead.
+ */
+const MAX_TIMEOUT_MS = 2_147_483_647
 
 /**
  * True for a C0 or C1 control character, or DEL.
@@ -159,13 +208,14 @@ export type TeracSdkOptions = {
 }
 
 /**
- * Bound to a configured generated client. Every operation takes an optional
- * trailing {@link TeracRequestOptions}.
+ * Bound to a configured client. Every operation takes an optional trailing
+ * {@link TeracRequestOptions}.
  *
- * The generated client is held in an ECMAScript `#private` field rather than a
+ * Each module holds that client in an ECMAScript `#private` field rather than a
  * TypeScript `private` one, so it is not an enumerable property: logging or
  * `JSON.stringify`-ing an SDK instance cannot reach the credential the client
- * holds.
+ * holds. The generated operations are plain functions taking the client as an
+ * argument, so nothing else keeps a reference to it either.
  */
 const toOptions = (options: TeracRequestOptions | undefined) =>
   options?.signal ? { signal: options.signal } : {}
@@ -176,10 +226,10 @@ const toOptions = (options: TeracRequestOptions | undefined) =>
  * @see https://terac.com/docs/developers/reference/listProjects
  */
 class ProjectsModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -191,7 +241,8 @@ class ProjectsModule {
     query?: GetProjectsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetProjectsResponse> {
-    const result = await this.#sdk.getProjects<true>({
+    const result = await getProjects<true>({
+      client: this.#client,
       ...(query ? { query } : {}),
       ...toOptions(options),
     })
@@ -205,7 +256,8 @@ class ProjectsModule {
     body: PostProjectsData['body'],
     options?: TeracRequestOptions,
   ): Promise<PostProjectsResponse> {
-    const result = await this.#sdk.postProjects<true>({
+    const result = await postProjects<true>({
+      client: this.#client,
       body,
       ...toOptions(options),
     })
@@ -221,7 +273,8 @@ class ProjectsModule {
     projectId: string,
     options?: TeracRequestOptions,
   ): Promise<GetProjectsByProjectIdResponse> {
-    const result = await this.#sdk.getProjectsByProjectId<true>({
+    const result = await getProjectsByProjectId<true>({
+      client: this.#client,
       path: { projectId },
       ...toOptions(options),
     })
@@ -238,7 +291,8 @@ class ProjectsModule {
     body: PatchProjectsByProjectIdData['body'],
     options?: TeracRequestOptions,
   ): Promise<PatchProjectsByProjectIdResponse> {
-    const result = await this.#sdk.patchProjectsByProjectId<true>({
+    const result = await patchProjectsByProjectId<true>({
+      client: this.#client,
       body,
       path: { projectId },
       ...toOptions(options),
@@ -254,10 +308,10 @@ class ProjectsModule {
  * @see https://terac.com/docs/developers/guides/filters
  */
 class FiltersModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -266,7 +320,10 @@ class FiltersModule {
    * Every filter slug, with its type, operators and bounds.
    */
   async list(options?: TeracRequestOptions): Promise<GetFiltersResponse> {
-    const result = await this.#sdk.getFilters<true>({ ...toOptions(options) })
+    const result = await getFilters<true>({
+      client: this.#client,
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -280,7 +337,8 @@ class FiltersModule {
     query?: GetFiltersByFilterSlugOptionsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetFiltersByFilterSlugOptionsResponse> {
-    const result = await this.#sdk.getFiltersByFilterSlugOptions<true>({
+    const result = await getFiltersByFilterSlugOptions<true>({
+      client: this.#client,
       path: { filter_slug: filterSlug },
       ...(query ? { query } : {}),
       ...toOptions(options),
@@ -296,10 +354,10 @@ class FiltersModule {
  * @see https://terac.com/docs/developers/reference/createOpportunity
  */
 class OpportunitiesModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -311,7 +369,8 @@ class OpportunitiesModule {
     query?: GetOpportunitiesData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetOpportunitiesResponse> {
-    const result = await this.#sdk.getOpportunities<true>({
+    const result = await getOpportunities<true>({
+      client: this.#client,
       ...(query ? { query } : {}),
       ...toOptions(options),
     })
@@ -351,7 +410,8 @@ class OpportunitiesModule {
     body: PostOpportunitiesData['body'],
     options?: TeracRequestOptions,
   ): Promise<PostOpportunitiesResponse> {
-    const result = await this.#sdk.postOpportunities<true>({
+    const result = await postOpportunities<true>({
+      client: this.#client,
       body,
       ...toOptions(options),
     })
@@ -367,7 +427,8 @@ class OpportunitiesModule {
     opportunityId: string,
     options?: TeracRequestOptions,
   ): Promise<GetOpportunitiesByOpportunityIdResponse> {
-    const result = await this.#sdk.getOpportunitiesByOpportunityId<true>({
+    const result = await getOpportunitiesByOpportunityId<true>({
+      client: this.#client,
       path: { opportunityId },
       ...toOptions(options),
     })
@@ -384,7 +445,8 @@ class OpportunitiesModule {
     body: PatchOpportunitiesByOpportunityIdData['body'],
     options?: TeracRequestOptions,
   ): Promise<PatchOpportunitiesByOpportunityIdResponse> {
-    const result = await this.#sdk.patchOpportunitiesByOpportunityId<true>({
+    const result = await patchOpportunitiesByOpportunityId<true>({
+      client: this.#client,
       body,
       path: { opportunityId },
       ...toOptions(options),
@@ -399,7 +461,8 @@ class OpportunitiesModule {
     opportunityId: string,
     options?: TeracRequestOptions,
   ): Promise<DeleteOpportunitiesByOpportunityIdResponse> {
-    const result = await this.#sdk.deleteOpportunitiesByOpportunityId<true>({
+    const result = await deleteOpportunitiesByOpportunityId<true>({
+      client: this.#client,
       path: { opportunityId },
       ...toOptions(options),
     })
@@ -415,13 +478,12 @@ class OpportunitiesModule {
     opportunityId: string,
     options?: TeracRequestOptions,
   ): Promise<PostOpportunitiesByOpportunityIdLaunchResponse> {
-    const result = await this.#sdk.postOpportunitiesByOpportunityIdLaunch<true>(
-      {
-        body: EMPTY_BODY,
-        path: { opportunityId },
-        ...toOptions(options),
-      },
-    )
+    const result = await postOpportunitiesByOpportunityIdLaunch<true>({
+      client: this.#client,
+      body: EMPTY_BODY,
+      path: { opportunityId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -434,7 +496,8 @@ class OpportunitiesModule {
     opportunityId: string,
     options?: TeracRequestOptions,
   ): Promise<PostOpportunitiesByOpportunityIdPauseResponse> {
-    const result = await this.#sdk.postOpportunitiesByOpportunityIdPause<true>({
+    const result = await postOpportunitiesByOpportunityIdPause<true>({
+      client: this.#client,
       body: EMPTY_BODY,
       path: { opportunityId },
       ...toOptions(options),
@@ -449,13 +512,12 @@ class OpportunitiesModule {
     opportunityId: string,
     options?: TeracRequestOptions,
   ): Promise<PostOpportunitiesByOpportunityIdResumeResponse> {
-    const result = await this.#sdk.postOpportunitiesByOpportunityIdResume<true>(
-      {
-        body: EMPTY_BODY,
-        path: { opportunityId },
-        ...toOptions(options),
-      },
-    )
+    const result = await postOpportunitiesByOpportunityIdResume<true>({
+      client: this.#client,
+      body: EMPTY_BODY,
+      path: { opportunityId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -469,7 +531,8 @@ class OpportunitiesModule {
     body: PostOpportunitiesByOpportunityIdStopData['body'] = EMPTY_BODY,
     options?: TeracRequestOptions,
   ): Promise<PostOpportunitiesByOpportunityIdStopResponse> {
-    const result = await this.#sdk.postOpportunitiesByOpportunityIdStop<true>({
+    const result = await postOpportunitiesByOpportunityIdStop<true>({
+      client: this.#client,
       body,
       path: { opportunityId },
       ...toOptions(options),
@@ -492,10 +555,10 @@ class OpportunitiesModule {
  * @see https://terac.com/docs/developers/reference/getSubmission
  */
 class SubmissionsModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -506,12 +569,12 @@ class SubmissionsModule {
     query?: GetOpportunitiesByOpportunityIdSubmissionsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetOpportunitiesByOpportunityIdSubmissionsResponse> {
-    const result =
-      await this.#sdk.getOpportunitiesByOpportunityIdSubmissions<true>({
-        path: { opportunityId },
-        ...(query ? { query } : {}),
-        ...toOptions(options),
-      })
+    const result = await getOpportunitiesByOpportunityIdSubmissions<true>({
+      client: this.#client,
+      path: { opportunityId },
+      ...(query ? { query } : {}),
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -542,12 +605,12 @@ class SubmissionsModule {
     query?: GetOpportunitiesByOpportunityIdApplicantsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetOpportunitiesByOpportunityIdApplicantsResponse> {
-    const result =
-      await this.#sdk.getOpportunitiesByOpportunityIdApplicants<true>({
-        path: { opportunityId },
-        ...(query ? { query } : {}),
-        ...toOptions(options),
-      })
+    const result = await getOpportunitiesByOpportunityIdApplicants<true>({
+      client: this.#client,
+      path: { opportunityId },
+      ...(query ? { query } : {}),
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -566,7 +629,8 @@ class SubmissionsModule {
     body: PostSubmissionsBySubmissionIdInviteData['body'] = EMPTY_BODY,
     options?: TeracRequestOptions,
   ): Promise<PostSubmissionsBySubmissionIdInviteResponse> {
-    const result = await this.#sdk.postSubmissionsBySubmissionIdInvite<true>({
+    const result = await postSubmissionsBySubmissionIdInvite<true>({
+      client: this.#client,
       body,
       path: { submissionId },
       ...toOptions(options),
@@ -589,7 +653,8 @@ class SubmissionsModule {
     body: PostSubmissionsBySubmissionIdDeclineData['body'] = EMPTY_BODY,
     options?: TeracRequestOptions,
   ): Promise<PostSubmissionsBySubmissionIdDeclineResponse> {
-    const result = await this.#sdk.postSubmissionsBySubmissionIdDecline<true>({
+    const result = await postSubmissionsBySubmissionIdDecline<true>({
+      client: this.#client,
       body,
       path: { submissionId },
       ...toOptions(options),
@@ -606,7 +671,8 @@ class SubmissionsModule {
     submissionId: string,
     options?: TeracRequestOptions,
   ): Promise<GetSubmissionsBySubmissionIdResponse> {
-    const result = await this.#sdk.getSubmissionsBySubmissionId<true>({
+    const result = await getSubmissionsBySubmissionId<true>({
+      client: this.#client,
       path: { submissionId },
       ...toOptions(options),
     })
@@ -622,7 +688,8 @@ class SubmissionsModule {
     submissionId: string,
     options?: TeracRequestOptions,
   ): Promise<PostSubmissionsBySubmissionIdApproveResponse> {
-    const result = await this.#sdk.postSubmissionsBySubmissionIdApprove<true>({
+    const result = await postSubmissionsBySubmissionIdApprove<true>({
+      client: this.#client,
       body: EMPTY_BODY,
       path: { submissionId },
       ...toOptions(options),
@@ -640,7 +707,8 @@ class SubmissionsModule {
     body: PostSubmissionsBySubmissionIdRejectData['body'] = EMPTY_BODY,
     options?: TeracRequestOptions,
   ): Promise<PostSubmissionsBySubmissionIdRejectResponse> {
-    const result = await this.#sdk.postSubmissionsBySubmissionIdReject<true>({
+    const result = await postSubmissionsBySubmissionIdReject<true>({
+      client: this.#client,
       body,
       path: { submissionId },
       ...toOptions(options),
@@ -659,10 +727,10 @@ class SubmissionsModule {
  * path.
  */
 class QuotesModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -687,7 +755,8 @@ class QuotesModule {
     body: PostQuotesData['body'],
     options?: TeracRequestOptions,
   ): Promise<PostQuotesResponse> {
-    const result = await this.#sdk.postQuotes<true>({
+    const result = await postQuotes<true>({
+      client: this.#client,
       body,
       ...toOptions(options),
     })
@@ -708,7 +777,8 @@ class QuotesModule {
     quoteId: string,
     options?: TeracRequestOptions,
   ): Promise<GetQuotesByQuoteIdResponse> {
-    const result = await this.#sdk.getQuotesByQuoteId<true>({
+    const result = await getQuotesByQuoteId<true>({
+      client: this.#client,
       path: { quoteId },
       ...toOptions(options),
     })
@@ -733,7 +803,8 @@ class QuotesModule {
     body: PostQuotesByQuoteIdLaunchData['body'] = EMPTY_BODY,
     options?: TeracRequestOptions,
   ): Promise<PostQuotesByQuoteIdLaunchResponse> {
-    const result = await this.#sdk.postQuotesByQuoteIdLaunch<true>({
+    const result = await postQuotesByQuoteIdLaunch<true>({
+      client: this.#client,
       body,
       path: { quoteId },
       ...toOptions(options),
@@ -749,10 +820,10 @@ class QuotesModule {
  * @see https://terac.com/docs/developers/reference/requestFeasibility
  */
 class FeasibilityModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -776,7 +847,8 @@ class FeasibilityModule {
     body: PostFeasibilityRequestsData['body'],
     options?: TeracRequestOptions,
   ): Promise<PostFeasibilityRequestsResponse> {
-    const result = await this.#sdk.postFeasibilityRequests<true>({
+    const result = await postFeasibilityRequests<true>({
+      client: this.#client,
       body,
       ...toOptions(options),
     })
@@ -795,7 +867,8 @@ class FeasibilityModule {
     query?: GetFeasibilityRequestsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetFeasibilityRequestsResponse> {
-    const result = await this.#sdk.getFeasibilityRequests<true>({
+    const result = await getFeasibilityRequests<true>({
+      client: this.#client,
       ...(query ? { query } : {}),
       ...toOptions(options),
     })
@@ -821,7 +894,8 @@ class FeasibilityModule {
     requestId: string,
     options?: TeracRequestOptions,
   ): Promise<GetFeasibilityRequestsByRequestIdResponse> {
-    const result = await this.#sdk.getFeasibilityRequestsByRequestId<true>({
+    const result = await getFeasibilityRequestsByRequestId<true>({
+      client: this.#client,
       path: { requestId },
       ...toOptions(options),
     })
@@ -835,10 +909,10 @@ class FeasibilityModule {
  * @see https://terac.com/docs/developers/reference/getOrganizationContext
  */
 class OrganizationsModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -851,7 +925,8 @@ class OrganizationsModule {
   async retrieveContext(
     options?: TeracRequestOptions,
   ): Promise<GetOrganizationsCurrentContextResponse> {
-    const result = await this.#sdk.getOrganizationsCurrentContext<true>({
+    const result = await getOrganizationsCurrentContext<true>({
+      client: this.#client,
       ...toOptions(options),
     })
     return result.data
@@ -865,10 +940,10 @@ class OrganizationsModule {
  * @see https://terac.com/docs/developers/guides/webhooks
  */
 class WebhooksModule {
-  readonly #sdk: GeneratedTeracSdk
+  readonly #client: Client
 
-  constructor(sdk: GeneratedTeracSdk) {
-    this.#sdk = sdk
+  constructor(client: Client) {
+    this.#client = client
   }
 
   /**
@@ -879,7 +954,8 @@ class WebhooksModule {
   async listEventTypes(
     options?: TeracRequestOptions,
   ): Promise<GetHooksEventTypesResponse> {
-    const result = await this.#sdk.getHooksEventTypes<true>({
+    const result = await getHooksEventTypes<true>({
+      client: this.#client,
       ...toOptions(options),
     })
     return result.data
@@ -891,7 +967,8 @@ class WebhooksModule {
   async list(
     options?: TeracRequestOptions,
   ): Promise<GetHooksSubscriptionsResponse> {
-    const result = await this.#sdk.getHooksSubscriptions<true>({
+    const result = await getHooksSubscriptions<true>({
+      client: this.#client,
       ...toOptions(options),
     })
     return result.data
@@ -908,7 +985,8 @@ class WebhooksModule {
     body: PostHooksSubscriptionsData['body'],
     options?: TeracRequestOptions,
   ): Promise<PostHooksSubscriptionsResponse> {
-    const result = await this.#sdk.postHooksSubscriptions<true>({
+    const result = await postHooksSubscriptions<true>({
+      client: this.#client,
       body,
       ...toOptions(options),
     })
@@ -922,7 +1000,8 @@ class WebhooksModule {
     subscriptionId: string,
     options?: TeracRequestOptions,
   ): Promise<GetHooksSubscriptionsBySubscriptionIdResponse> {
-    const result = await this.#sdk.getHooksSubscriptionsBySubscriptionId<true>({
+    const result = await getHooksSubscriptionsBySubscriptionId<true>({
+      client: this.#client,
       path: { subscriptionId },
       ...toOptions(options),
     })
@@ -939,12 +1018,12 @@ class WebhooksModule {
     body: PatchHooksSubscriptionsBySubscriptionIdData['body'],
     options?: TeracRequestOptions,
   ): Promise<PatchHooksSubscriptionsBySubscriptionIdResponse> {
-    const result =
-      await this.#sdk.patchHooksSubscriptionsBySubscriptionId<true>({
-        body,
-        path: { subscriptionId },
-        ...toOptions(options),
-      })
+    const result = await patchHooksSubscriptionsBySubscriptionId<true>({
+      client: this.#client,
+      body,
+      path: { subscriptionId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -960,13 +1039,12 @@ class WebhooksModule {
     subscriptionId: string,
     options?: TeracRequestOptions,
   ): Promise<PostHooksSubscriptionsBySubscriptionIdResponse> {
-    const result = await this.#sdk.postHooksSubscriptionsBySubscriptionId<true>(
-      {
-        body: EMPTY_BODY,
-        path: { subscriptionId },
-        ...toOptions(options),
-      },
-    )
+    const result = await postHooksSubscriptionsBySubscriptionId<true>({
+      client: this.#client,
+      body: EMPTY_BODY,
+      path: { subscriptionId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -977,11 +1055,11 @@ class WebhooksModule {
     subscriptionId: string,
     options?: TeracRequestOptions,
   ): Promise<DeleteHooksSubscriptionsBySubscriptionIdResponse> {
-    const result =
-      await this.#sdk.deleteHooksSubscriptionsBySubscriptionId<true>({
-        path: { subscriptionId },
-        ...toOptions(options),
-      })
+    const result = await deleteHooksSubscriptionsBySubscriptionId<true>({
+      client: this.#client,
+      path: { subscriptionId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -994,11 +1072,11 @@ class WebhooksModule {
     subscriptionId: string,
     options?: TeracRequestOptions,
   ): Promise<GetHooksSubscriptionsBySubscriptionIdSecretResponse> {
-    const result =
-      await this.#sdk.getHooksSubscriptionsBySubscriptionIdSecret<true>({
-        path: { subscriptionId },
-        ...toOptions(options),
-      })
+    const result = await getHooksSubscriptionsBySubscriptionIdSecret<true>({
+      client: this.#client,
+      path: { subscriptionId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -1013,12 +1091,12 @@ class WebhooksModule {
     subscriptionId: string,
     options?: TeracRequestOptions,
   ): Promise<PostHooksSubscriptionsBySubscriptionIdSecretResponse> {
-    const result =
-      await this.#sdk.postHooksSubscriptionsBySubscriptionIdSecret<true>({
-        body: EMPTY_BODY,
-        path: { subscriptionId },
-        ...toOptions(options),
-      })
+    const result = await postHooksSubscriptionsBySubscriptionIdSecret<true>({
+      client: this.#client,
+      body: EMPTY_BODY,
+      path: { subscriptionId },
+      ...toOptions(options),
+    })
     return result.data
   }
 
@@ -1033,7 +1111,8 @@ class WebhooksModule {
     query?: GetHooksEventsData['query'],
     options?: TeracRequestOptions,
   ): Promise<GetHooksEventsResponse> {
-    const result = await this.#sdk.getHooksEvents<true>({
+    const result = await getHooksEvents<true>({
+      client: this.#client,
       ...(query ? { query } : {}),
       ...toOptions(options),
     })
@@ -1072,6 +1151,12 @@ export class TeracSdk {
       (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
     ) {
       throw new Error('TeracSdk timeoutMs must be a positive number')
+    }
+
+    if (timeoutMs !== undefined && timeoutMs > MAX_TIMEOUT_MS) {
+      throw new Error(
+        `TeracSdk timeoutMs must be at most ${String(MAX_TIMEOUT_MS)}ms (about 24.8 days); setTimeout clamps a longer delay to 1ms, which would abort every request immediately`,
+      )
     }
 
     this.#apiKey = apiKey
@@ -1138,11 +1223,15 @@ export class TeracSdk {
         })
       }
 
+      // Everything below this line is written by the server, so all of it is
+      // scrubbed of the key. `message`, `code` and `details` are read back out
+      // of the payload by `TeracApiError`, so scrubbing the payload covers
+      // them too.
       const apiErrorOptions = {
         status: response.status,
-        statusText: response.statusText,
-        payload: error,
-        responseHeaders: summarizeResponseHeaders(response),
+        statusText: redactApiKey(response.statusText, apiKey),
+        payload: redactPayload(error, apiKey),
+        responseHeaders: summarizeResponseHeaders(response, apiKey),
         ...(summary ? { request: summary } : {}),
       }
 
@@ -1151,15 +1240,13 @@ export class TeracSdk {
         : new TeracApiError(apiErrorOptions)
     })
 
-    const generated = new GeneratedTeracSdk({ client })
-
-    this.projects = new ProjectsModule(generated)
-    this.filters = new FiltersModule(generated)
-    this.opportunities = new OpportunitiesModule(generated)
-    this.submissions = new SubmissionsModule(generated)
-    this.quotes = new QuotesModule(generated)
-    this.feasibility = new FeasibilityModule(generated)
-    this.organizations = new OrganizationsModule(generated)
-    this.webhooks = new WebhooksModule(generated)
+    this.projects = new ProjectsModule(client)
+    this.filters = new FiltersModule(client)
+    this.opportunities = new OpportunitiesModule(client)
+    this.submissions = new SubmissionsModule(client)
+    this.quotes = new QuotesModule(client)
+    this.feasibility = new FeasibilityModule(client)
+    this.organizations = new OrganizationsModule(client)
+    this.webhooks = new WebhooksModule(client)
   }
 }

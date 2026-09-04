@@ -1,0 +1,75 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned, not resolved from `devEngines.packageManager`: a newer pnpm
+      # rewrites the lockfile, which `--frozen-lockfile` then refuses.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.1 # keep in step with `packageManager`
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Schema validation, generate:check, type-check, lint, format, build,
+      # tests, then the dist smoke tests.
+      - run: pnpm run check
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+
+  dist:
+    name: dist smoke (node ${{ matrix.node-version }})
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every major the package claims in `engines.node`. Node 18 is the
+        # oldest, and the one the dev toolchain cannot run on.
+        node-version: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned, not resolved from `devEngines.packageManager`: a newer pnpm
+      # rewrites the lockfile, which `--frozen-lockfile` then refuses.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.1 # keep in step with `packageManager`
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      # Only the runtime dependency: Vite, Vitest, ESLint and tsdown all need
+      # Node 20 or newer, so installing them here would defeat the point.
+      - run: pnpm install --prod --frozen-lockfile --ignore-scripts
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - run: pnpm run test:dist

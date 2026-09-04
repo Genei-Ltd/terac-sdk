@@ -29,6 +29,13 @@ const EVENT = {
 
 const RAW_BODY = JSON.stringify(EVENT)
 
+/** JSON whose bytes hold a lone 0xFF, which is not a valid UTF-8 sequence. */
+const INVALID_UTF8_BODY = Buffer.concat([
+  Buffer.from('{"event_type":"x.y","event_id":"e1","n":"'),
+  Buffer.from([0xff]),
+  Buffer.from('"}'),
+])
+
 /** Signs exactly as the guide describes: timestamp + raw body, no separator. */
 const sign = (timestamp: string, body: string, secret = SECRET): string =>
   createHmac('sha256', secret)
@@ -440,36 +447,65 @@ describe('verifyTeracWebhook', () => {
       )
       expect(delivery.eventId).toBe('dlv_header_only')
     })
+
+    // A body that HAS the property but not a usable value is not a body that
+    // omits it. Reading it as "absent" would hand the decision back to the
+    // unsigned header, which is the replay the rule above exists to stop.
+    test.each([
+      ['an empty string', '""'],
+      ['a number', '42'],
+      ['null', 'null'],
+      ['an object', '{"id":"dlv_1"}'],
+      ['an array', '["dlv_1"]'],
+    ])(
+      'rejects a body whose event_id is %s, rather than using the header',
+      (_name, encoded) => {
+        const body = `{"event_type":"submission.approved","event_id":${encoded}}`
+        expectFailure(
+          () =>
+            verify(
+              {
+                [TERAC_SIGNATURE_HEADER]: sign(TIMESTAMP, body),
+                [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+                [TERAC_EVENT_ID_HEADER]: 'dlv_attacker',
+              },
+              body,
+            ),
+          'malformed_payload',
+        )
+      },
+    )
   })
 
   describe('byte-exact payloads', () => {
     test('the HMAC covers the bytes given, not their UTF-8 decoding', () => {
       // 0xFF is not a valid UTF-8 sequence. Decoding first replaces it with
       // U+FFFD, so an HMAC over the decoded string covers bytes the sender
-      // never sent — and a delivery Terac signed correctly would be rejected.
-      const prefix = Buffer.from('{"event_type":"x.y","event_id":"e1","n":"')
-      const suffix = Buffer.from('"}')
-      const bytes = Buffer.concat([prefix, Buffer.from([0xff]), suffix])
-
+      // never sent.
       const overBytes = createHmac('sha256', SECRET)
         .update(TIMESTAMP, 'utf-8')
-        .update(bytes)
+        .update(INVALID_UTF8_BODY)
         .digest('base64')
-      const overDecoded = sign(TIMESTAMP, bytes.toString('utf-8'))
+      const overDecoded = sign(TIMESTAMP, INVALID_UTF8_BODY.toString('utf-8'))
       expect(overBytes).not.toBe(overDecoded)
 
-      const delivery = verify(
-        {
-          [TERAC_SIGNATURE_HEADER]: overBytes,
-          [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
-          [TERAC_EVENT_ID_HEADER]: 'e1',
-        },
-        bytes,
+      // The signature over the BYTES passes the signature check and is then
+      // refused for its encoding; the signature over the DECODED form never
+      // gets that far. Two different failures, so which digest matched is not
+      // a guess.
+      expectFailure(
+        () =>
+          verify(
+            {
+              [TERAC_SIGNATURE_HEADER]: overBytes,
+              [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+              [TERAC_EVENT_ID_HEADER]: 'e1',
+            },
+            INVALID_UTF8_BODY,
+          ),
+        'malformed_payload',
       )
-      expect(delivery.eventId).toBe('e1')
-      expect(delivery.event.event_type).toBe('x.y')
 
-      // A signature over the decoded form does NOT verify against the bytes.
       expectFailure(
         () =>
           verify(
@@ -478,10 +514,58 @@ describe('verifyTeracWebhook', () => {
               [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
               [TERAC_EVENT_ID_HEADER]: 'e1',
             },
-            bytes,
+            INVALID_UTF8_BODY,
           ),
         'signature_mismatch',
       )
+    })
+
+    test('rejects a body that is not valid UTF-8, rather than substituting', () => {
+      // A lenient decode turns 0xFF into U+FFFD, `JSON.parse` accepts the
+      // result, and the delivery is accepted with a `rawBody` the sender never
+      // sent.
+      const signature = createHmac('sha256', SECRET)
+        .update(TIMESTAMP, 'utf-8')
+        .update(INVALID_UTF8_BODY)
+        .digest('base64')
+
+      const error = expectFailure(
+        () =>
+          verify(
+            {
+              [TERAC_SIGNATURE_HEADER]: signature,
+              [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+              [TERAC_EVENT_ID_HEADER]: 'e1',
+            },
+            INVALID_UTF8_BODY,
+          ),
+        'malformed_payload',
+      )
+      expect(error.message).toContain('UTF-8')
+    })
+
+    test('rawBody re-encodes to exactly the bytes that were signed', () => {
+      // Multi-byte characters, so a decoding bug shows up as changed bytes
+      // rather than as an identical ASCII round trip.
+      const body = JSON.stringify({
+        event_type: 'submission.approved',
+        event_id: 'dlv_utf8',
+        note: 'café — naïve 😀',
+      })
+      const bytes = Buffer.from(body, 'utf-8')
+
+      const delivery = verify(
+        {
+          [TERAC_SIGNATURE_HEADER]: createHmac('sha256', SECRET)
+            .update(TIMESTAMP, 'utf-8')
+            .update(bytes)
+            .digest('base64'),
+          [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+        },
+        bytes,
+      )
+
+      expect(Buffer.from(delivery.rawBody, 'utf-8').equals(bytes)).toBe(true)
     })
 
     test('a Uint8Array view is hashed over its own window, not its buffer', () => {

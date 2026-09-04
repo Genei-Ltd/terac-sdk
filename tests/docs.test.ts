@@ -91,7 +91,7 @@ describe('facade JSDoc', () => {
 
   const generatedDocs = [
     ...generatedSource.matchAll(
-      /\/\*\*\n((?:[ \t]*\*.*\n)*?)[ \t]*\*\/\s*\n\s*public (\w+)</g,
+      /\/\*\*\n((?:[ \t]*\*.*\n)*?)[ \t]*\*\/\s*\n\s*export const (\w+) = </g,
     ),
   ].map((match) => ({
     operation: match[2] ?? '',
@@ -106,7 +106,7 @@ describe('facade JSDoc', () => {
   test.each(generatedDocs)(
     '$operation keeps its generated summary and description',
     ({ operation, prose }) => {
-      const call = `this.#sdk.${operation}<true>`
+      const call = `await ${operation}<true>(`
       const callIndex = facadeSource.indexOf(call)
       expect(
         callIndex,
@@ -161,10 +161,8 @@ describe('README claims that the code must keep true', () => {
       join(repoRoot, 'src', 'generated', 'sdk.gen.ts'),
       'utf-8',
     )
-    // `public static readonly __registry` is not an operation.
-    const operationCount = [
-      ...generated.matchAll(/^ {4}public (?!static)[a-z]/gm),
-    ].length
+    const operationCount = [...generated.matchAll(/^export const [a-z]/gm)]
+      .length
     expect(readme).toContain(
       `All ${String(operationCount)} generated operations`,
     )

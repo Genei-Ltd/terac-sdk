@@ -135,6 +135,37 @@ describe('parseTeracTaskUrlParams', () => {
     })
   })
 
+  test('reads a relative request URL, the shape Node hands you', () => {
+    // `IncomingMessage.url` is path-and-query, never absolute. `new URL` with
+    // no base rejects it, and reading the whole string as a query string finds
+    // no parameters at all.
+    expect(
+      parseTeracTaskUrlParams('/session?teracSubmissionId=sub_1#done'),
+    ).toEqual({ submissionId: 'sub_1' })
+
+    expect(
+      parseTeracTaskUrlParams('/s/abc?taskId=tsk_2&teracSubmissionId=sub_1'),
+    ).toEqual({ submissionId: 'sub_1', taskId: 'tsk_2' })
+
+    expect(parseTeracTaskUrlParams('/?teracSubmissionId=sub_1')).toEqual({
+      submissionId: 'sub_1',
+    })
+  })
+
+  test('a fragment on a relative URL is not part of the query', () => {
+    expect(
+      parseTeracTaskUrlParams(
+        '/session?teracSubmissionId=sub_1#/route?teracSubmissionId=sub_evil',
+      ),
+    ).toEqual({ submissionId: 'sub_1' })
+  })
+
+  test('a relative URL with no query has no id, and says so', () => {
+    expect(() => parseTeracTaskUrlParams('/session')).toThrow(
+      /Missing teracSubmissionId/,
+    )
+  })
+
   test('reads a URL whose path contains an encoded question mark', () => {
     expect(
       parseTeracTaskUrlParams(

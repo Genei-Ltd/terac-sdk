@@ -17,10 +17,13 @@ export default defineConfig({
       client: '@hey-api/client-fetch',
       name: '@hey-api/sdk',
       operations: {
-        containerName: 'GeneratedTeracSdk',
-        methods: 'instance',
+        // Flat functions, not an instance class. The class form keeps a public
+        // static registry of every instance it constructs, and each instance
+        // holds the configured client, so `Sdk.__registry.get().client` hands
+        // any caller the API key. Flat functions take the client as an
+        // argument, so the configured one stays in a `#private` field.
         nesting: 'id',
-        strategy: 'single',
+        strategy: 'flat',
       },
     },
     {
