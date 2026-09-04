@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 #
-# Regenerates the client from the committed schema into a scratch directory and
-# fails when the result differs from the committed src/generated. Keeps the
-# vendored spec and the checked-in output honest in CI.
+# Regenerates the client from the committed schema and fails when the result
+# differs from the committed src/generated. Keeps the vendored spec and the
+# checked-in output honest in CI.
+#
+# The generator writes straight into src/generated — the output path lives in
+# openapi-ts.config.ts — so this script copies the committed tree aside first
+# and an EXIT trap puts it back however the run ends: success, failure, or an
+# interrupt. The worktree is never left holding a half-regenerated tree.
 
 set -euo pipefail
 
@@ -17,9 +22,15 @@ if [ ! -d src/generated ]; then
 fi
 
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
-
 cp -R src/generated "${WORK_DIR}/committed"
+
+# Installed only after the copy exists, so it can never restore from nothing.
+restore_committed_output() {
+  rm -rf src/generated
+  cp -R "${WORK_DIR}/committed" src/generated
+  rm -rf "${WORK_DIR}"
+}
+trap restore_committed_output EXIT
 
 echo "Regenerating the client from schemas/openapi.json..."
 pnpm exec openapi-ts >/dev/null
@@ -30,7 +41,5 @@ if diff -ru "${WORK_DIR}/committed" src/generated; then
 else
   echo >&2
   echo "generate:check: src/generated is stale. Run 'pnpm run generate' and commit the result." >&2
-  rm -rf src/generated
-  cp -R "${WORK_DIR}/committed" src/generated
   exit 1
 fi
