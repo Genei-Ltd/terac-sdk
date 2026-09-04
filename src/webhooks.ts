@@ -47,7 +47,10 @@ export type TeracWebhookVerificationFailure =
   | 'signature_mismatch'
   | 'malformed_payload'
   | 'missing_event_id'
+  | 'event_id_mismatch'
   | 'invalid_secret'
+  | 'invalid_tolerance'
+  | 'invalid_now'
 
 /**
  * Raised by {@link verifyTeracWebhook}. `reason` says which check failed, so a
@@ -114,7 +117,13 @@ export type TeracWebhookHeaders =
 
 /** A verified delivery. */
 export type TeracWebhookDeliveryEnvelope = {
-  /** Stable across retries. Deduplicate on this before doing any work. */
+  /**
+   * Stable across retries. Deduplicate on this before doing any work.
+   *
+   * The body's signed `event_id` when it has one, and the `X-Event-ID` header
+   * only when the body omits it. A header that disagrees with the signed value
+   * fails verification.
+   */
   eventId: string
   /** The signed Unix-seconds timestamp, as a number. */
   signedAtSeconds: number
@@ -140,9 +149,14 @@ export type VerifyTeracWebhookOptions = {
    * {@link DEFAULT_WEBHOOK_TOLERANCE_SECONDS}. Pass `Infinity` to disable the
    * freshness check, which makes deliveries replayable — only do that if you
    * deduplicate on `eventId` in durable storage.
+   *
+   * Anything else — `NaN`, `-Infinity`, a negative number, a non-number — is
+   * rejected rather than treated as "no window". `Number(process.env.X)` on an
+   * unset variable is `NaN`, and silently accepting it would remove replay
+   * protection from a misconfigured deployment.
    */
   toleranceSeconds?: number
-  /** Current time in milliseconds. Injected by tests. */
+  /** Current time in milliseconds. Must be finite. Injected by tests. */
   now?: number
 }
 
@@ -276,6 +290,30 @@ export const verifyTeracWebhook = ({
     )
   }
 
+  // Fail closed. `NaN` and `-Infinity` would both skip the freshness check
+  // below exactly like the intentional `Infinity` escape hatch, so a bad
+  // configuration value would silently disable replay protection.
+  if (
+    typeof toleranceSeconds !== 'number' ||
+    !(
+      toleranceSeconds === Number.POSITIVE_INFINITY ||
+      (Number.isFinite(toleranceSeconds) && toleranceSeconds >= 0)
+    )
+  ) {
+    throw new TeracWebhookVerificationError(
+      'invalid_tolerance',
+      'toleranceSeconds must be a non-negative finite number, or Infinity to disable the freshness check',
+    )
+  }
+
+  // A non-finite `now` makes every age comparison pass.
+  if (typeof now !== 'number' || !Number.isFinite(now)) {
+    throw new TeracWebhookVerificationError(
+      'invalid_now',
+      'now must be a finite number of milliseconds',
+    )
+  }
+
   const signature = readSingleHeader(headers, TERAC_SIGNATURE_HEADER)
   if (signature === undefined || signature.length === 0) {
     throw new TeracWebhookVerificationError(
@@ -317,15 +355,16 @@ export const verifyTeracWebhook = ({
     }
   }
 
-  const rawBody =
-    typeof payload === 'string'
-      ? payload
-      : Buffer.from(payload).toString('utf-8')
-
   // The signed string is the timestamp header concatenated with the raw body,
-  // with no separator.
+  // with no separator. Feed the timestamp and the ORIGINAL bytes to the HMAC
+  // separately: decoding first would replace any invalid UTF-8 sequence with
+  // U+FFFD, and the digest would then cover bytes the sender never sent.
+  const bodyBytes =
+    typeof payload === 'string' ? Buffer.from(payload, 'utf-8') : payload
+
   const expected = createHmac('sha256', secret)
-    .update(timestamp + rawBody)
+    .update(timestamp, 'utf-8')
+    .update(bodyBytes)
     .digest()
 
   const provided = decodeStrictBase64(
@@ -345,6 +384,12 @@ export const verifyTeracWebhook = ({
       'Signature does not match the request body',
     )
   }
+
+  // Only now, with the bytes proven authentic, decode them for JSON.
+  const rawBody =
+    typeof payload === 'string'
+      ? payload
+      : Buffer.from(payload).toString('utf-8')
 
   let parsed: unknown
   try {
@@ -373,8 +418,29 @@ export const verifyTeracWebhook = ({
     parsed,
   )
 
+  // The HMAC covers the timestamp and the body, never `X-Event-ID`. So when
+  // the body carries a signed `event_id`, that value wins and the header must
+  // agree with it: letting an unsigned header decide would let a captured
+  // delivery be replayed under a fresh id, straight past deduplication.
   const headerEventId = readSingleHeader(headers, TERAC_EVENT_ID_HEADER)
-  const eventId = headerEventId ?? event.event_id
+  const signedEventId =
+    typeof event.event_id === 'string' && event.event_id.length > 0
+      ? event.event_id
+      : undefined
+
+  if (
+    signedEventId !== undefined &&
+    headerEventId !== undefined &&
+    headerEventId.length > 0 &&
+    headerEventId !== signedEventId
+  ) {
+    throw new TeracWebhookVerificationError(
+      'event_id_mismatch',
+      `${TERAC_EVENT_ID_HEADER} does not match the signed event_id in the body`,
+    )
+  }
+
+  const eventId = signedEventId ?? headerEventId
   if (typeof eventId !== 'string' || eventId.length === 0) {
     throw new TeracWebhookVerificationError(
       'missing_event_id',

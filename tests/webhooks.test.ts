@@ -326,6 +326,178 @@ describe('verifyTeracWebhook', () => {
         'dlv_7h3k9',
       )
     })
+
+    // `Infinity` is the one deliberate escape hatch. Everything else that
+    // would skip the comparison fails closed instead: `Number(process.env.X)`
+    // on an unset variable is `NaN`, and accepting that would quietly delete
+    // replay protection from a deployment.
+    describe.each([
+      ['NaN', Number.NaN],
+      ['-Infinity', Number.NEGATIVE_INFINITY],
+      ['a negative number', -1],
+      ['a large negative number', -300],
+    ])('an invalid tolerance (%s)', (_name, toleranceSeconds) => {
+      test('is rejected even for a delivery that is perfectly fresh', () => {
+        expectFailure(
+          () => verify(validHeaders(), RAW_BODY, toleranceSeconds),
+          'invalid_tolerance',
+        )
+      })
+
+      test('is rejected for an ancient delivery, rather than accepting it', () => {
+        const ancient = '1000000000'
+        expectFailure(
+          () =>
+            verify(
+              validHeaders({
+                [TERAC_SIGNATURE_HEADER]: sign(ancient, RAW_BODY),
+                [TERAC_TIMESTAMP_HEADER]: ancient,
+              }),
+              RAW_BODY,
+              toleranceSeconds,
+            ),
+          'invalid_tolerance',
+        )
+      })
+    })
+
+    test('rejects a tolerance that is not a number', () => {
+      // A misconfiguration reaches this parameter as whatever the environment
+      // held. `JSON.parse` is how a non-number gets past the declared type
+      // without a type assertion, which ESLint rejects repository-wide.
+      const notANumber: number = JSON.parse('"300"')
+
+      expectFailure(
+        () =>
+          verifyTeracWebhook({
+            payload: RAW_BODY,
+            headers: validHeaders(),
+            secret: SECRET,
+            now: NOW_MS,
+            toleranceSeconds: notANumber,
+          }),
+        'invalid_tolerance',
+      )
+    })
+
+    test.each([
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['-Infinity', Number.NEGATIVE_INFINITY],
+    ])('rejects a non-finite now (%s)', (_name, now) => {
+      // A non-finite `now` makes every age comparison pass, so an ancient
+      // delivery would sail straight through the window.
+      const ancient = '1000000000'
+      expectFailure(
+        () =>
+          verifyTeracWebhook({
+            payload: RAW_BODY,
+            headers: validHeaders({
+              [TERAC_SIGNATURE_HEADER]: sign(ancient, RAW_BODY),
+              [TERAC_TIMESTAMP_HEADER]: ancient,
+            }),
+            secret: SECRET,
+            now,
+          }),
+        'invalid_now',
+      )
+    })
+  })
+
+  describe('event id', () => {
+    test('a header that disagrees with the signed body value is rejected', () => {
+      // The HMAC covers the timestamp and the body, never `X-Event-ID`. A
+      // captured delivery replayed under a fresh header id would otherwise
+      // walk straight past deduplication.
+      expectFailure(
+        () => verify(validHeaders({ [TERAC_EVENT_ID_HEADER]: 'dlv_attacker' })),
+        'event_id_mismatch',
+      )
+    })
+
+    test('a matching header is accepted, and the signed value is returned', () => {
+      expect(verify(validHeaders()).eventId).toBe(EVENT.event_id)
+    })
+
+    test('the signed value is used when there is no header at all', () => {
+      expect(
+        verify(validHeaders({ [TERAC_EVENT_ID_HEADER]: undefined })).eventId,
+      ).toBe(EVENT.event_id)
+    })
+
+    test('falls back to the header only when the body omits event_id', () => {
+      const body = JSON.stringify({
+        event_type: 'submission.approved',
+        resource_id: 'sub_1',
+      })
+      const delivery = verify(
+        {
+          [TERAC_SIGNATURE_HEADER]: sign(TIMESTAMP, body),
+          [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+          [TERAC_EVENT_ID_HEADER]: 'dlv_header_only',
+        },
+        body,
+      )
+      expect(delivery.eventId).toBe('dlv_header_only')
+    })
+  })
+
+  describe('byte-exact payloads', () => {
+    test('the HMAC covers the bytes given, not their UTF-8 decoding', () => {
+      // 0xFF is not a valid UTF-8 sequence. Decoding first replaces it with
+      // U+FFFD, so an HMAC over the decoded string covers bytes the sender
+      // never sent — and a delivery Terac signed correctly would be rejected.
+      const prefix = Buffer.from('{"event_type":"x.y","event_id":"e1","n":"')
+      const suffix = Buffer.from('"}')
+      const bytes = Buffer.concat([prefix, Buffer.from([0xff]), suffix])
+
+      const overBytes = createHmac('sha256', SECRET)
+        .update(TIMESTAMP, 'utf-8')
+        .update(bytes)
+        .digest('base64')
+      const overDecoded = sign(TIMESTAMP, bytes.toString('utf-8'))
+      expect(overBytes).not.toBe(overDecoded)
+
+      const delivery = verify(
+        {
+          [TERAC_SIGNATURE_HEADER]: overBytes,
+          [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+          [TERAC_EVENT_ID_HEADER]: 'e1',
+        },
+        bytes,
+      )
+      expect(delivery.eventId).toBe('e1')
+      expect(delivery.event.event_type).toBe('x.y')
+
+      // A signature over the decoded form does NOT verify against the bytes.
+      expectFailure(
+        () =>
+          verify(
+            {
+              [TERAC_SIGNATURE_HEADER]: overDecoded,
+              [TERAC_TIMESTAMP_HEADER]: TIMESTAMP,
+              [TERAC_EVENT_ID_HEADER]: 'e1',
+            },
+            bytes,
+          ),
+        'signature_mismatch',
+      )
+    })
+
+    test('a Uint8Array view is hashed over its own window, not its buffer', () => {
+      const framed = Buffer.concat([
+        Buffer.from('XXXX'),
+        Buffer.from(RAW_BODY, 'utf-8'),
+        Buffer.from('YYYY'),
+      ])
+      const view = new Uint8Array(
+        framed.buffer,
+        framed.byteOffset + 4,
+        Buffer.byteLength(RAW_BODY, 'utf-8'),
+      )
+
+      expect(verify(validHeaders(), view).eventId).toBe('dlv_7h3k9')
+    })
   })
 
   describe('malformed input', () => {
