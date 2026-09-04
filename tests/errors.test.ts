@@ -1,3 +1,4 @@
+import { inspect } from 'node:util'
 import { describe, expect, test } from 'vitest'
 import {
   TeracApiError,
@@ -161,6 +162,51 @@ describe('error classification', () => {
     }
     expect(error.message).toContain('503')
     expect(error.code).toBeUndefined()
+
+    await server.close()
+  })
+})
+
+describe('response header redaction', () => {
+  test('keeps every name, and only allow-listed values', async () => {
+    const server = await startServer((request, response) => {
+      json(
+        response,
+        429,
+        { error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+        {
+          'retry-after': '11',
+          'x-ratelimit-remaining': '0',
+          'x-request-id': 'req_visible',
+          // A proxy that echoes the inbound credential back. A block-list of
+          // known credential headers would not catch this name, and the value
+          // would end up in `responseHeaders` and in every rendering of the
+          // error.
+          'x-debug-authorization': String(request.headers.authorization),
+          'set-cookie': 'session=leak',
+        },
+      )
+    })
+    const terac = new TeracSdk({ apiKey: API_KEY, baseUrl: server.origin })
+
+    const error = await terac.projects.list().catch((thrown: unknown) => thrown)
+    if (!(error instanceof TeracApiError)) {
+      throw new Error('expected a TeracApiError')
+    }
+
+    // Useful values survive.
+    expect(error.responseHeaders['retry-after']).toBe('11')
+    expect(error.responseHeaders['x-ratelimit-remaining']).toBe('0')
+    expect(error.responseHeaders['x-request-id']).toBe('req_visible')
+    expect(error.responseHeaders['content-type']).toContain('application/json')
+
+    // Everything else keeps its NAME and loses its value.
+    expect(error.responseHeaders).toHaveProperty('x-debug-authorization')
+    expect(error.responseHeaders['x-debug-authorization']).toBe('[redacted]')
+    expect(error.responseHeaders['set-cookie']).toBe('[redacted]')
+
+    expect(JSON.stringify(error)).not.toContain(API_KEY)
+    expect(inspect(error, { depth: null })).not.toContain(API_KEY)
 
     await server.close()
   })

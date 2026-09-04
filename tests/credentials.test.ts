@@ -33,6 +33,72 @@ const collectEnumerableStrings = (root: unknown): string[] => {
   return found
 }
 
+/** Every path a thrown error normally takes into a log. */
+const errorRenderings = (error: unknown): string[] => [
+  String(error),
+  error instanceof Error ? error.message : '',
+  error instanceof Error ? String(error.stack) : '',
+  error instanceof Error ? String(error.cause) : '',
+  inspect(error, { depth: null }),
+  inspect(error, { depth: null, showHidden: true }),
+  JSON.stringify(error),
+  ...collectEnumerableStrings(error),
+]
+
+describe('API key validation', () => {
+  // Distinctive, so a leak in any rendering is unambiguous.
+  const MARKED = 'tk_marked_secret_never_print_me'
+  const NEWLINE = String.fromCharCode(10)
+
+  test('the header API is exactly what would have leaked the key', () => {
+    // Not hypothetical: `Headers.set` quotes the offending value, and the
+    // offending value is the whole `Bearer <key>` string. That error is thrown
+    // while the request is being built, so it lands on
+    // `TeracTransportError.cause` and prints wherever the error prints.
+    let thrown: unknown
+    try {
+      new Headers().set('authorization', `Bearer ${MARKED}${NEWLINE}x`)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(TypeError)
+    expect(String(thrown)).toContain(MARKED)
+  })
+
+  test.each([
+    ['a trailing newline', `${MARKED}${NEWLINE}`],
+    ['a leading space', ` ${MARKED}`],
+    ['a trailing space', `${MARKED} `],
+    ['an embedded newline', `${MARKED}${NEWLINE}x`],
+    ['an embedded carriage return', `${MARKED}${String.fromCharCode(13)}x`],
+    ['an embedded NUL', `${MARKED}${String.fromCharCode(0)}x`],
+    ['an embedded BEL', `${MARKED}${String.fromCharCode(7)}x`],
+    ['an embedded DEL', `${MARKED}${String.fromCharCode(127)}x`],
+  ])('rejects a key with %s, without quoting it', (_name, apiKey) => {
+    let thrown: unknown
+    try {
+      new TeracSdk({ apiKey })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(Error)
+    for (const rendering of errorRenderings(thrown)) {
+      expect(rendering).not.toContain(MARKED)
+    }
+  })
+
+  test('rejects an empty or blank key', () => {
+    expect(() => new TeracSdk({ apiKey: '' })).toThrow(/non-empty string/)
+    expect(() => new TeracSdk({ apiKey: '   ' })).toThrow(/non-empty string/)
+  })
+
+  test('accepts a well-formed key', () => {
+    expect(() => new TeracSdk({ apiKey: MARKED })).not.toThrow()
+  })
+})
+
 describe('credential containment', () => {
   const sdk = new TeracSdk({ apiKey: API_KEY, timeoutMs: 1000 })
 
@@ -135,8 +201,10 @@ describe('credential containment', () => {
     }
 
     expect(error.request?.headers.authorization).toBe('[redacted]')
-    expect(inspect(error, { depth: null })).not.toContain(API_KEY)
-    expect(collectEnumerableStrings(error)).not.toContain(API_KEY)
+    // Including the `cause`, which is where a header-building failure lands.
+    for (const rendering of errorRenderings(error)) {
+      expect(rendering).not.toContain(API_KEY)
+    }
   })
 
   test('a request that cannot even be built is a transport error', async () => {

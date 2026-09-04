@@ -14,7 +14,10 @@
  *
  * None of them carry the `Request`, the `Response` or the API key. They carry a
  * {@link TeracRequestSummary}: method, URL and header NAMES, with every header
- * value redacted unless it is on a short transport allow-list.
+ * value redacted unless it is on a short transport allow-list. Response headers
+ * are treated the same way, by
+ * {@link summarizeResponseHeaders} — an allow-list, because a header name
+ * nobody anticipated is exactly where an echoed credential turns up.
  */
 
 /** Header values that are safe to reproduce in an error. */
@@ -62,28 +65,54 @@ export const summarizeRequest = (request: Request): TeracRequestSummary => ({
 })
 
 /**
- * Header names on a RESPONSE that may carry a credential.
+ * Header names on a RESPONSE whose VALUE may be reproduced in an error.
  *
- * Response headers are the server's, not ours, and they carry the useful
- * rate-limit signals, so these are redacted by exception rather than by
- * allow-list.
+ * An allow-list, not a block-list. Response headers are written by the server
+ * and by everything between it and this process, so a block-list only defends
+ * against the names someone thought of: a proxy that echoes the request in
+ * `X-Debug-Authorization` would put the API key straight into
+ * `responseHeaders`, `JSON.stringify(error)` and `util.inspect(error)`.
+ *
+ * Every header NAME is still kept, so "the server sent a `Set-Cookie`" stays
+ * visible; only the values a caller genuinely acts on survive.
  */
-const SENSITIVE_RESPONSE_HEADER_NAMES = new Set([
-  'authorization',
-  'proxy-authenticate',
-  'set-cookie',
-  'www-authenticate',
+const REPRODUCIBLE_RESPONSE_HEADER_NAMES = new Set([
+  // Backoff.
+  'retry-after',
+  // Rate-limit signals, in both the IETF draft and the `X-` spellings.
+  'ratelimit',
+  'ratelimit-limit',
+  'ratelimit-policy',
+  'ratelimit-remaining',
+  'ratelimit-reset',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'x-ratelimit-reset',
+  // How the body was framed, which is what explains a decoding failure.
+  'content-type',
+  // Identifiers to quote back to the provider in a support request.
+  'correlation-id',
+  'request-id',
+  'traceparent',
+  'x-correlation-id',
+  'x-request-id',
+  'x-trace-id',
 ])
 
-/** Response headers, with any credential-bearing header redacted. */
+/**
+ * Response headers, keeping every NAME and only the values on the allow-list.
+ * Everything else becomes {@link REDACTED}.
+ */
 export const summarizeResponseHeaders = (
   response: Response,
 ): Record<string, string> => {
   const summarized: Record<string, string> = {}
   response.headers.forEach((value, name) => {
-    summarized[name] = SENSITIVE_RESPONSE_HEADER_NAMES.has(name.toLowerCase())
-      ? REDACTED
-      : value
+    summarized[name] = REPRODUCIBLE_RESPONSE_HEADER_NAMES.has(
+      name.toLowerCase(),
+    )
+      ? value
+      : REDACTED
   })
   return summarized
 }

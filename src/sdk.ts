@@ -84,6 +84,52 @@ export const TERAC_BASE_URL = 'https://terac.com/api/external/v2'
 const EMPTY_BODY: Record<string, never> = {}
 
 /**
+ * True for a C0 or C1 control character, or DEL.
+ *
+ * A header value holding one of these makes `Headers.set` throw, and the error
+ * it throws quotes the offending value — which is the whole `Bearer <key>`
+ * string. Rejecting the key up front is the only way to keep that out of a
+ * `TeracTransportError.cause`. Written as a scan rather than a regular
+ * expression because a control-character class is what `no-control-regex`
+ * exists to catch.
+ */
+const hasControlCharacter = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Rejects a key that cannot be put in a header, without ever quoting it.
+ *
+ * A copy-pasted key with a trailing newline is the common case, and it is the
+ * one that turns into a credential leak: the error is thrown deep inside the
+ * fetch client, retained as `cause`, and printed by any logger that walks it.
+ * The messages here name the FAULT, never the value.
+ */
+const assertUsableApiKey = (apiKey: string): void => {
+  if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+    throw new Error('TeracSdk apiKey must be a non-empty string')
+  }
+
+  if (apiKey.trim() !== apiKey) {
+    throw new Error(
+      'TeracSdk apiKey must not have leading or trailing whitespace; trim the value before passing it',
+    )
+  }
+
+  if (hasControlCharacter(apiKey)) {
+    throw new Error(
+      'TeracSdk apiKey must not contain control characters; it cannot be sent as a header value',
+    )
+  }
+}
+
+/**
  * Per-call request controls, accepted as the last argument of every operation.
  */
 export type TeracRequestOptions = {
@@ -799,9 +845,7 @@ export class TeracSdk {
   public readonly webhooks: WebhooksModule
 
   constructor({ apiKey, baseUrl, timeoutMs }: TeracSdkOptions) {
-    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new Error('TeracSdk apiKey must be a non-empty string')
-    }
+    assertUsableApiKey(apiKey)
 
     if (
       timeoutMs !== undefined &&
